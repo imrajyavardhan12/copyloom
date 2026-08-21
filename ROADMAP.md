@@ -13,7 +13,7 @@ This roadmap uses vertical slices and evidence gates. Dates are intentionally ab
 
 **Exit:** significant alternatives are explicit; no production implementation has begun.
 
-## M1 — Open-source and engineering foundation (in progress)
+## M1 — Open-source and engineering foundation (complete)
 
 - Apache-2.0 `LICENSE`, `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`, third-party notices
 - GitHub bug/feature templates and pull-request template
@@ -25,7 +25,7 @@ This roadmap uses vertical slices and evidence gates. Dates are intentionally ab
 - benchmark executable and 100k deterministic corpus generator
 - accepted ADRs for distribution/sandbox, deployment target, minimal migrations/hash version, retention, auto-paste permission flow, attachment limits and GRDB
 
-**Current evidence:** the local package/app build, migrations, tests, formatter, corpus generator and shared CI command pass; see [`docs/validation/m1-foundation.md`](docs/validation/m1-foundation.md). Hosted GitHub CI remains unverified until the public remote exists.
+**Evidence:** local and hosted package/app builds, migrations, tests, formatting, CodeQL and corpus generation pass; see [`docs/validation/m1-foundation.md`](docs/validation/m1-foundation.md).
 
 **Exit:** clean checkout builds/tests with one documented command on supported CI; no clipboard UI required.
 

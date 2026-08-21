@@ -50,9 +50,12 @@ The Release corpus generator produced 100,000 deterministic synthetic JSONL reco
 
 This is fixture-generation evidence only. No `<30 ms` database search claim has been made.
 
+## Hosted validation
+
+The public repository is <https://github.com/imrajyavardhan12/copyloom>. GitHub-hosted CI passed on `macos-15` ([run 32493820986](https://github.com/imrajyavardhan12/copyloom/actions/runs/32493820986)). CodeQL Swift analysis passed with zero open code-scanning alerts ([run 32493820888](https://github.com/imrajyavardhan12/copyloom/actions/runs/32493820888)). Private vulnerability reporting is enabled.
+
 ## Deferred evidence
 
-- GitHub-hosted CI has not run because no remote repository has been created/pushed.
 - macOS 14 runtime and Intel runtime tests have not run.
 - Developer ID signing, hardened-runtime notarization and Mac App Store validation require future paid membership.
 - Clipboard capture, global hotkey, Accessibility paste, Quick Paste and their TCC/manual matrix belong to M2.
