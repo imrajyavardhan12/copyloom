@@ -1,0 +1,28 @@
+# Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+App/Copyloom.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+*.xccheckout
+*.moved-aside
+
+# Swift Package Manager
+.build/
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+
+# Local build output
+.build-artifacts/
+
+# macOS
+.DS_Store
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.p12
+*.mobileprovision
+*.provisionprofile
+
+# Benchmark output
+Benchmarks/Results/
