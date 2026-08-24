@@ -52,7 +52,9 @@ Run the locally ad-hoc-signed menu-bar app:
 ./scripts/run.sh
 ```
 
-Choose **Enable Clipboard Capture…** from the menu, read the privacy explanation, and respond to the macOS pasteboard-access prompt. Use only synthetic/non-sensitive text while testing this early build.
+The development build displays **Copyloom** beside a clipboard symbol so it is easy to find. Choose **Enable Clipboard Capture…**, read the privacy explanation, and respond to the macOS pasteboard-access prompt. Use only synthetic/non-sensitive text while testing this early build.
+
+If the item is still missing, rerun `./scripts/run.sh`. Maintainers with Accessibility access for Terminal can run `./scripts/check-menu-bar.sh` for a direct status-item diagnostic.
 
 Or open `Copyloom.xcworkspace` in Xcode. If the shell selects Command Line Tools instead of full Xcode:
 

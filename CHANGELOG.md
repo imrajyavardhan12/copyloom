@@ -15,6 +15,7 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Explicit opt-in text/link clipboard monitoring with pause and ignore-next-copy controls.
 - Pre-persistence concealed/transient/vendor marker checks, ignored-app checks, size limits, and local sensitive-content detection.
 - Source application provenance aggregation and source-aware FTS/filter search.
+- A labeled, accessibility-identifiable Copyloom menu-bar item and diagnostic script.
 - Reproducible local/CI scripts and open-source contribution files.
 
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main

@@ -6,7 +6,7 @@ struct CopyloomApp: App {
   @State private var model = AppModel()
 
   var body: some Scene {
-    MenuBarExtra("Copyloom", systemImage: "clipboard") {
+    MenuBarExtra {
       Label(model.statusText, systemImage: model.capturePaused ? "pause.circle" : "clipboard")
         .accessibilityLabel(model.statusText)
 
@@ -44,6 +44,10 @@ struct CopyloomApp: App {
         NSApplication.shared.terminate(nil)
       }
       .keyboardShortcut("q")
+    } label: {
+      Label("Copyloom", systemImage: "clipboard")
+        .labelStyle(.titleAndIcon)
+        .accessibilityLabel("Copyloom")
     }
     .menuBarExtraStyle(.menu)
   }

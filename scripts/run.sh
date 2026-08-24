@@ -24,5 +24,13 @@ xcodebuild \
     build
 
 APP="$DERIVED_DATA/Build/Products/Debug/Copyloom.app"
+osascript -e 'tell application id "io.github.imrajyavardhan12.copyloom" to quit' \
+    >/dev/null 2>&1 || true
+for _ in {1..20}; do
+    if ! pgrep -qf '/Copyloom.app/Contents/MacOS/Copyloom'; then
+        break
+    fi
+    sleep 0.1
+done
 open -n "$APP"
-printf 'Opened %s\n' "$APP"
+printf 'Opened %s\nLook for “Copyloom” next to the clipboard symbol in the menu bar.\n' "$APP"
