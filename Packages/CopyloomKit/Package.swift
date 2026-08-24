@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "ClipDomain", targets: ["ClipDomain"]),
         .library(name: "ClipSearch", targets: ["ClipSearch"]),
         .library(name: "ClipStore", targets: ["ClipStore"]),
+        .library(name: "ClipboardCapture", targets: ["ClipboardCapture"]),
         .executable(name: "copyloom-corpus", targets: ["CopyloomCorpusGenerator"]),
     ],
     dependencies: [
@@ -29,6 +30,7 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
+        .target(name: "ClipboardCapture", dependencies: ["ClipDomain"]),
         .executableTarget(name: "CopyloomCorpusGenerator"),
         .testTarget(
             name: "ClipSearchTests",
@@ -36,7 +38,15 @@ let package = Package(
         ),
         .testTarget(
             name: "ClipStoreTests",
-            dependencies: ["ClipDomain", "ClipStore"]
+            dependencies: [
+                "ClipDomain",
+                "ClipStore",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ]
+        ),
+        .testTarget(
+            name: "ClipboardCaptureTests",
+            dependencies: ["ClipDomain", "ClipboardCapture", "ClipStore"]
         ),
     ]
 )

@@ -5,7 +5,7 @@
 Copyloom is an open-source, native macOS clipboard workspace built to become a private local memory layer—not another disposable clipboard-history list.
 
 > [!IMPORTANT]
-> Copyloom is in early foundation development. The current app is an honest menu-bar host and the package contains the first tested SQLite/FTS5 storage and search tracer. Clipboard monitoring and Quick Paste are not implemented yet.
+> Copyloom is in early vertical-slice development. The app now has explicit opt-in, privacy-gated text/link capture with pause and ignore-next controls. Browsing/search UI, Quick Paste, automatic paste, images and retention settings are not implemented yet.
 
 ## Principles
 
@@ -25,7 +25,9 @@ Copyloom is an open-source, native macOS clipboard workspace built to become a p
 - versioned, transactional schema migrations;
 - typed structured-query parser;
 - on-disk accepted-text repository and external-content FTS5 integration tests;
-- sandboxed menu-bar lifecycle host that does not read the clipboard or request permissions;
+- sandboxed menu-bar host with explicit capture onboarding, pause/resume and ignore-next-copy;
+- local sensitive-text detection and concealed/transient/password-manager marker rejection before storage;
+- best-effort source application provenance and ignored-app policy;
 - Apache-2.0 project license.
 
 See [ROADMAP.md](ROADMAP.md) for what is and is not implemented.
@@ -43,6 +45,14 @@ git clone https://github.com/imrajyavardhan12/copyloom.git
 cd copyloom
 ./scripts/ci.sh
 ```
+
+Run the locally ad-hoc-signed menu-bar app:
+
+```bash
+./scripts/run.sh
+```
+
+Choose **Enable Clipboard Capture…** from the menu, read the privacy explanation, and respond to the macOS pasteboard-access prompt. Use only synthetic/non-sensitive text while testing this early build.
 
 Or open `Copyloom.xcworkspace` in Xcode. If the shell selects Command Line Tools instead of full Xcode:
 

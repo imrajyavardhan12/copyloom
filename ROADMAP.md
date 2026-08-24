@@ -29,7 +29,9 @@ This roadmap uses vertical slices and evidence gates. Dates are intentionally ab
 
 **Exit:** clean checkout builds/tests with one documented command on supported CI; no clipboard UI required.
 
-## M2 — First serious vertical slice
+## M2 — First serious vertical slice (in progress)
+
+**Implemented tracer:** explicit opt-in text/link capture, privacy-marker and sensitive-content rejection before storage, source provenance, deduplication, app-container persistence, pause/resume, ignore-next-copy, and local clip count. Quick Paste, configurable ignored-app UI, retention cleanup, global hotkey, automatic paste, and images remain.
 
 ### Capture and privacy
 

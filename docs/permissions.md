@@ -31,7 +31,7 @@ The core history and copy-back experience must degrade gracefully. No permission
 
 ### Clipboard access
 
-`NSPasteboard.general` is the core data source. Apple now documents an `accessBehavior` model for newer macOS versions in which programmatic reads can be ask/allow/deny and a **Paste from Other Apps** privacy setting may appear. The app must:
+`NSPasteboard.general` is the core data source. Apple exposes `NSPasteboard.accessBehavior` on macOS 15.4+; programmatic reads can be ask/allow/deny and a **Paste from Other Apps** privacy setting may appear. The app must:
 
 1. show an onboarding explanation before the first monitoring read;
 2. inspect availability/access behavior where the SDK supports it;

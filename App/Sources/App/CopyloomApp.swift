@@ -1,17 +1,46 @@
 import AppKit
-import ClipStore
 import SwiftUI
 
 @main
 struct CopyloomApp: App {
+  @State private var model = AppModel()
+
   var body: some Scene {
     MenuBarExtra("Copyloom", systemImage: "clipboard") {
-      Label("Capture is not running yet", systemImage: "pause.circle")
-        .accessibilityLabel("Clipboard capture is not running yet")
+      Label(model.statusText, systemImage: model.capturePaused ? "pause.circle" : "clipboard")
+        .accessibilityLabel(model.statusText)
+
+      Text("\(model.clipCount) clips stored locally")
+
+      if let lastEvent = model.lastEventText {
+        Text(lastEvent)
+      }
+
+      Divider()
+
+      if model.captureEnabled {
+        Button(model.capturePaused ? "Resume Capture" : "Pause Capture") {
+          model.togglePause()
+        }
+
+        Button("Ignore Next Copy") {
+          model.ignoreNextCopy()
+        }
+        .disabled(model.capturePaused)
+
+        Button("Turn Off Capture") {
+          model.disableCapture()
+        }
+      } else {
+        Button("Enable Clipboard Capture…") {
+          model.enableCapture()
+        }
+      }
 
       Divider()
 
       Button("Quit Copyloom") {
+        model.shutdown()
         NSApplication.shared.terminate(nil)
       }
       .keyboardShortcut("q")

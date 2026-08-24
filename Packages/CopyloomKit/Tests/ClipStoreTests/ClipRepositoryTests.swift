@@ -47,6 +47,59 @@ struct ClipRepositoryTests {
     #expect(results.first?.createdAt == capturedAt)
   }
 
+  @Test("aggregates source applications and exposes latest provenance after deduplication")
+  func storesSourceProvenance() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let originalID = UUID()
+    let text = "Copyloom source metadata tracer"
+
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(
+        id: originalID,
+        text: text,
+        capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
+        source: ClipSource(
+          bundleIdentifier: "com.apple.Safari",
+          applicationName: "Safari",
+          provenance: .declared
+        )
+      )
+    )
+    let duplicate = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(
+        id: UUID(),
+        text: text,
+        capturedAt: Date(timeIntervalSince1970: 1_700_000_100),
+        source: ClipSource(
+          bundleIdentifier: "com.mitchellh.ghostty",
+          applicationName: "Ghostty",
+          provenance: .frontmostApplication
+        )
+      )
+    )
+
+    let safariResults = try await database.repository.search(
+      SearchQuery(text: [], filters: [.application("Safari")]),
+      limit: 20
+    )
+    let ghosttyAsText = try await database.repository.search(
+      SearchQuery(text: [.term("Ghostty")], filters: []),
+      limit: 20
+    )
+
+    #expect(duplicate.id == originalID)
+    #expect(duplicate.source?.bundleIdentifier == "com.mitchellh.ghostty")
+    #expect(duplicate.source?.provenance == .frontmostApplication)
+    #expect(safariResults.map(\.id) == [originalID])
+    #expect(ghosttyAsText.map(\.id) == [originalID])
+  }
+
   @Test("treats FTS operators and quotes as text rather than executable query syntax")
   func escapesFTSSyntax() async throws {
     let directory = FileManager.default.temporaryDirectory
@@ -92,7 +145,9 @@ struct ClipRepositoryTests {
       AcceptedTextClip(id: duplicateID, text: "Café\nstatus", capturedAt: secondDate)
     )
     let recent = try await database.repository.recent(limit: 20)
+    let count = try await database.repository.count()
 
+    #expect(count == 1)
     #expect(duplicate.id == firstID)
     #expect(duplicate.copyCount == 2)
     #expect(duplicate.createdAt == firstDate)

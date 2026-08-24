@@ -131,7 +131,7 @@ These are not Apple-enforced and adoption is incomplete. The app must inspect ma
 
 ### Pasteboard privacy on newer macOS
 
-Apple now documents `NSPasteboard.accessBehavior` and detection APIs for an upcoming/newer macOS pasteboard privacy model in which programmatic reads may be `.ask`, `.alwaysAllow`, or `.alwaysDeny`, while user-initiated paste-related access is treated differently. Users may see **Privacy & Security → Paste from Other Apps**. Exact shipping behavior and SDK availability must be tested on every supported macOS release; the current machine has Command Line Tools but not a selected full Xcode installation.
+Apple exposes `NSPasteboard.accessBehavior` and detection APIs on macOS 15.4+ for a pasteboard privacy model in which programmatic reads may be `.ask`, `.alwaysAllow`, or `.alwaysDeny`, while user-initiated paste-related access is treated differently. Users may see **Privacy & Security → Paste from Other Apps**. Exact behavior must still be tested on every supported macOS release.
 
 Sources: [`accessBehavior`](https://developer.apple.com/documentation/appkit/nspasteboard/accessbehavior-86972), [AppKit updates](https://developer.apple.com/documentation/Updates/AppKit?changes=_9_4&language=objc).
 

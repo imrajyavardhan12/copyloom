@@ -1,6 +1,6 @@
 # Database Schema Design
 
-_Status: logical schema design; minimal migration 001 is implemented in `ClipStore/Migrations.swift`_
+_Status: logical schema design; text/FTS migration 001 and application-source migration 002 are implemented in `ClipStore/Migrations.swift`_
 _Updated: 2026-08-21_
 
 Migration policy is governed by [ADR 0002](decisions/0002-migrations-hashing-and-safety-defaults.md): migration 001 is intentionally limited to the accepted-text persistence/search tracer. Tables shown for later capabilities are logical designs, not promises that they all belong in migration 001.

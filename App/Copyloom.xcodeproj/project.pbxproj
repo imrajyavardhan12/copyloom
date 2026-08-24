@@ -9,12 +9,16 @@
 /* Begin PBXBuildFile section */
 		A20000000000000000000001 /* CopyloomApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* CopyloomApp.swift */; };
 		A20000000000000000000002 /* ClipStore in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* ClipStore */; };
+		A20000000000000000000003 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* AppModel.swift */; };
+		A20000000000000000000004 /* ClipboardCapture in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* ClipboardCapture */; };
+		A20000000000000000000005 /* ClipDomain in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000003 /* ClipDomain */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A30000000000000000000001 /* CopyloomApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyloomApp.swift; sourceTree = "<group>"; };
 		A30000000000000000000002 /* Copyloom.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Copyloom.entitlements; sourceTree = "<group>"; };
 		A30000000000000000000003 /* Copyloom.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Copyloom.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000000000000000000004 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -23,6 +27,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				A20000000000000000000002 /* ClipStore in Frameworks */,
+				A20000000000000000000004 /* ClipboardCapture in Frameworks */,
+				A20000000000000000000005 /* ClipDomain in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -50,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				A30000000000000000000001 /* CopyloomApp.swift */,
+				A30000000000000000000004 /* AppModel.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -80,6 +87,8 @@
 			name = Copyloom;
 			packageProductDependencies = (
 				A90000000000000000000001 /* ClipStore */,
+				A90000000000000000000002 /* ClipboardCapture */,
+				A90000000000000000000003 /* ClipDomain */,
 			);
 			productName = Copyloom;
 			productReference = A30000000000000000000003 /* Copyloom.app */;
@@ -137,6 +146,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A20000000000000000000001 /* CopyloomApp.swift in Sources */,
+				A20000000000000000000003 /* AppModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -348,6 +358,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A80000000000000000000001 /* XCLocalSwiftPackageReference "../Packages/CopyloomKit" */;
 			productName = ClipStore;
+		};
+		A90000000000000000000002 /* ClipboardCapture */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A80000000000000000000001 /* XCLocalSwiftPackageReference "../Packages/CopyloomKit" */;
+			productName = ClipboardCapture;
+		};
+		A90000000000000000000003 /* ClipDomain */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A80000000000000000000001 /* XCLocalSwiftPackageReference "../Packages/CopyloomKit" */;
+			productName = ClipDomain;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -74,6 +74,73 @@ enum Migrations {
           END;
           """)
     }
+
+    migrator.registerMigration("002_application_sources_and_search") { database in
+      try database.execute(
+        sql: """
+          CREATE TABLE applications (
+              id INTEGER PRIMARY KEY,
+              bundle_id TEXT NOT NULL UNIQUE,
+              display_name TEXT NOT NULL,
+              first_seen_at INTEGER NOT NULL,
+              last_seen_at INTEGER NOT NULL
+          );
+
+          CREATE TABLE clip_application_sources (
+              clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+              application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+              provenance INTEGER NOT NULL,
+              first_seen_at INTEGER NOT NULL,
+              last_seen_at INTEGER NOT NULL,
+              copy_count INTEGER NOT NULL DEFAULT 1 CHECK (copy_count >= 1),
+              PRIMARY KEY (clip_id, application_id, provenance)
+          );
+
+          CREATE INDEX clip_sources_app_recent
+              ON clip_application_sources(application_id, last_seen_at DESC, clip_id);
+
+          ALTER TABLE clips
+              ADD COLUMN latest_application_id INTEGER REFERENCES applications(id) ON DELETE SET NULL;
+          ALTER TABLE clips
+              ADD COLUMN latest_source_provenance INTEGER NOT NULL DEFAULT 0;
+
+          DROP TRIGGER search_documents_ai;
+          DROP TRIGGER search_documents_ad;
+          DROP TRIGGER search_documents_au;
+          DROP TABLE clip_fts;
+
+          ALTER TABLE search_documents
+              ADD COLUMN applications TEXT NOT NULL DEFAULT '';
+
+          CREATE VIRTUAL TABLE clip_fts USING fts5(
+              body,
+              applications,
+              content='search_documents',
+              content_rowid='clip_id',
+              tokenize='unicode61 remove_diacritics 2',
+              prefix='2 3 4'
+          );
+
+          CREATE TRIGGER search_documents_ai AFTER INSERT ON search_documents BEGIN
+              INSERT INTO clip_fts(rowid, body, applications)
+              VALUES (new.clip_id, new.body, new.applications);
+          END;
+
+          CREATE TRIGGER search_documents_ad AFTER DELETE ON search_documents BEGIN
+              INSERT INTO clip_fts(clip_fts, rowid, body, applications)
+              VALUES ('delete', old.clip_id, old.body, old.applications);
+          END;
+
+          CREATE TRIGGER search_documents_au AFTER UPDATE ON search_documents BEGIN
+              INSERT INTO clip_fts(clip_fts, rowid, body, applications)
+              VALUES ('delete', old.clip_id, old.body, old.applications);
+              INSERT INTO clip_fts(rowid, body, applications)
+              VALUES (new.clip_id, new.body, new.applications);
+          END;
+
+          INSERT INTO clip_fts(clip_fts) VALUES ('rebuild');
+          """)
+    }
     return migrator
   }
 }
