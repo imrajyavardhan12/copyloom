@@ -128,13 +128,13 @@ struct QuickPasteView: View {
 
   private var footer: some View {
     HStack(spacing: 16) {
-      Label("Navigate", systemImage: "arrow.up.arrow.down")
-      Text("↩ Paste")
-      Text("⌘↩ Copy")
-      Text("⌥↩ Plain")
+      Text("↑↓ Navigate")
+      Text("Return: Paste")
+      Text("⌘Return: Copy only")
+      Text("⌥Return: Plain paste")
+      Spacer()
       Text("⌘P Pin")
       Text("⌥⌫ Delete")
-      Spacer()
       Text("⌘1–9")
     }
     .font(.caption)
