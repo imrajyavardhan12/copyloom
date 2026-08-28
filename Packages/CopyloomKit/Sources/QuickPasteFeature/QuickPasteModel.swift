@@ -3,9 +3,15 @@ import ClipSearch
 import Foundation
 import Observation
 
+public enum ClipDeliveryMode: Equatable, Sendable {
+  case primary
+  case copyOnly
+  case plainText
+}
+
 @MainActor
-public protocol ClipCopying: AnyObject {
-  func copy(_ clip: ClipSummary) throws
+public protocol ClipDelivering: AnyObject {
+  func deliver(_ clip: ClipSummary, mode: ClipDeliveryMode) async throws
 }
 
 @MainActor
@@ -14,10 +20,11 @@ public final class QuickPasteModel {
   public private(set) var items: [ClipSummary] = []
   public private(set) var selectedIndex = 0
   public private(set) var isLoading = false
+  public private(set) var isDelivering = false
   public private(set) var errorMessage: String?
 
   @ObservationIgnored private let repository: any ClipRepository
-  @ObservationIgnored private let copier: any ClipCopying
+  @ObservationIgnored private let delivery: any ClipDelivering
   @ObservationIgnored private let parser: SearchQueryParser
   @ObservationIgnored private let now: @MainActor @Sendable () -> Date
   @ObservationIgnored private let calendar: Calendar
@@ -26,14 +33,14 @@ public final class QuickPasteModel {
 
   public init(
     repository: any ClipRepository,
-    copier: any ClipCopying,
+    delivery: any ClipDelivering,
     parser: SearchQueryParser = SearchQueryParser(),
     now: @escaping @MainActor @Sendable () -> Date = { .now },
     calendar: Calendar = .current,
     onDismiss: @escaping @MainActor () -> Void = {}
   ) {
     self.repository = repository
-    self.copier = copier
+    self.delivery = delivery
     self.parser = parser
     self.now = now
     self.calendar = calendar
@@ -88,12 +95,14 @@ public final class QuickPasteModel {
     selectedIndex = index
   }
 
-  public func activateSelected() async {
-    guard let selectedClip else { return }
+  public func activateSelected(mode: ClipDeliveryMode = .primary) async {
+    guard let selectedClip, !isDelivering else { return }
+    isDelivering = true
+    defer { isDelivering = false }
     do {
-      try copier.copy(selectedClip)
+      try await delivery.deliver(selectedClip, mode: mode)
     } catch {
-      errorMessage = "Unable to write to the clipboard"
+      errorMessage = "Unable to deliver the selected clip"
       return
     }
 

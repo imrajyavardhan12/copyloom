@@ -12,7 +12,7 @@ struct QuickPasteModelTests {
     let repository = QuickPasteRepositorySpy(
       clips: [fixture("first"), fixture("second"), fixture("third")]
     )
-    let model = QuickPasteModel(repository: repository, copier: QuickPasteCopierSpy())
+    let model = QuickPasteModel(repository: repository, delivery: QuickPasteDeliverySpy())
 
     await model.loadRecent()
     model.moveSelection(by: 1)
@@ -27,7 +27,7 @@ struct QuickPasteModelTests {
   func searches() async throws {
     let result = fixture("Safari result")
     let repository = QuickPasteRepositorySpy(clips: [], searchResults: [result])
-    let model = QuickPasteModel(repository: repository, copier: QuickPasteCopierSpy())
+    let model = QuickPasteModel(repository: repository, delivery: QuickPasteDeliverySpy())
 
     await model.search("postgres app:Safari")
     let query = await repository.lastSearchQuery()
@@ -41,12 +41,12 @@ struct QuickPasteModelTests {
   func activatesSelection() async throws {
     let clip = fixture("copy me")
     let repository = QuickPasteRepositorySpy(clips: [clip])
-    let copier = QuickPasteCopierSpy()
+    let delivery = QuickPasteDeliverySpy()
     var dismissed = false
     let usedAt = Date(timeIntervalSince1970: 1_800_000_000)
     let model = QuickPasteModel(
       repository: repository,
-      copier: copier,
+      delivery: delivery,
       now: { usedAt },
       onDismiss: { dismissed = true }
     )
@@ -54,9 +54,24 @@ struct QuickPasteModelTests {
     await model.loadRecent()
     await model.activateSelected()
 
-    #expect(copier.copiedClip?.id == clip.id)
+    #expect(delivery.deliveredClip?.id == clip.id)
+    #expect(delivery.mode == .primary)
     #expect(await repository.recordedUse() == .init(id: clip.id, date: usedAt))
     #expect(dismissed)
+  }
+
+  @Test("forwards an explicit copy-only delivery mode")
+  func copiesWithoutPasting() async throws {
+    let clip = fixture("copy only")
+    let repository = QuickPasteRepositorySpy(clips: [clip])
+    let delivery = QuickPasteDeliverySpy()
+    let model = QuickPasteModel(repository: repository, delivery: delivery)
+
+    await model.loadRecent()
+    await model.activateSelected(mode: .copyOnly)
+
+    #expect(delivery.deliveredClip?.id == clip.id)
+    #expect(delivery.mode == .copyOnly)
   }
 
   @Test("pins and deletes the selected clip while maintaining selection")
@@ -64,7 +79,7 @@ struct QuickPasteModelTests {
     let first = fixture("first")
     let second = fixture("second")
     let repository = QuickPasteRepositorySpy(clips: [first, second])
-    let model = QuickPasteModel(repository: repository, copier: QuickPasteCopierSpy())
+    let model = QuickPasteModel(repository: repository, delivery: QuickPasteDeliverySpy())
 
     await model.loadRecent()
     await model.togglePinSelected()
@@ -92,11 +107,13 @@ struct QuickPasteModelTests {
 }
 
 @MainActor
-private final class QuickPasteCopierSpy: ClipCopying {
-  private(set) var copiedClip: ClipSummary?
+private final class QuickPasteDeliverySpy: ClipDelivering {
+  private(set) var deliveredClip: ClipSummary?
+  private(set) var mode: ClipDeliveryMode?
 
-  func copy(_ clip: ClipSummary) throws {
-    copiedClip = clip
+  func deliver(_ clip: ClipSummary, mode: ClipDeliveryMode) async throws {
+    deliveredClip = clip
+    self.mode = mode
   }
 }
 

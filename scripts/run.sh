@@ -33,4 +33,4 @@ for _ in {1..20}; do
     sleep 0.1
 done
 open -n "$APP"
-printf 'Opened %s\nLook for “Copyloom” next to the clipboard symbol in the menu bar.\n' "$APP"
+printf 'Opened %s\nLook for the clipboard icon in the menu bar (accessibility label: Copyloom).\n' "$APP"

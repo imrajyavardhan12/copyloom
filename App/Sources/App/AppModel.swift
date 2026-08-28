@@ -45,7 +45,12 @@ final class AppModel {
       monitor = PasteboardPollingMonitor(service: service) { [weak self] outcome in
         self?.handle(outcome)
       }
-      let quickPasteController = QuickPastePanelController(repository: database.repository)
+      let quickPasteController = QuickPastePanelController(
+        repository: database.repository,
+        onDeliveryStatus: { [weak self] status in
+          self?.lastEventText = status
+        }
+      )
       self.quickPasteController = quickPasteController
       do {
         globalHotKey = try GlobalHotKey { [weak self] in
@@ -130,7 +135,9 @@ final class AppModel {
   }
 
   func toggleQuickPaste() {
-    quickPasteController?.toggle()
+    quickPasteController?.toggle(
+      targetApplication: NSWorkspace.shared.frontmostApplication
+    )
   }
 
   func shutdown() {

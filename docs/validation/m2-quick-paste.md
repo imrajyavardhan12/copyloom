@@ -32,6 +32,6 @@ A locally ad-hoc-signed sandboxed build was launched and validated through the a
 
 The manual automation required Accessibility for the driving Terminal/System Events process only. Copyloom itself did not request Accessibility or Input Monitoring for opening/searching/copying.
 
-## Deferred
+## Follow-on
 
-Enter currently **copies** the selected clip. Restoring the previous application and synthesizing Command-V remains the next Accessibility-gated tracer. Rich representations, paste-as-plain-text variants, Space preview, drag/drop, images, and the optional notch/edge shelf remain later work.
+Previous-application activation and automatic Command-V are implemented and validated in [`m2-auto-paste.md`](m2-auto-paste.md). Rich representations, Space preview, drag/drop, images, and the optional notch/edge shelf remain later work.

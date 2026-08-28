@@ -17,6 +17,7 @@
 		A20000000000000000000008 /* QuickPastePanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000007 /* QuickPastePanelController.swift */; };
 		A20000000000000000000009 /* GlobalHotKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000008 /* GlobalHotKey.swift */; };
 		A2000000000000000000000A /* QuickPasteFeature in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000004 /* QuickPasteFeature */; };
+		A2000000000000000000000B /* PasteCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000009 /* PasteCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 		A30000000000000000000006 /* QuickPasteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickPasteView.swift; sourceTree = "<group>"; };
 		A30000000000000000000007 /* QuickPastePanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickPastePanelController.swift; sourceTree = "<group>"; };
 		A30000000000000000000008 /* GlobalHotKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKey.swift; sourceTree = "<group>"; };
+		A30000000000000000000009 /* PasteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +73,7 @@
 				A30000000000000000000006 /* QuickPasteView.swift */,
 				A30000000000000000000007 /* QuickPastePanelController.swift */,
 				A30000000000000000000008 /* GlobalHotKey.swift */,
+				A30000000000000000000009 /* PasteCoordinator.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -166,6 +169,7 @@
 				A20000000000000000000007 /* QuickPasteView.swift in Sources */,
 				A20000000000000000000008 /* QuickPastePanelController.swift in Sources */,
 				A20000000000000000000009 /* GlobalHotKey.swift in Sources */,
+				A2000000000000000000000B /* PasteCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

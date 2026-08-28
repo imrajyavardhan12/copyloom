@@ -1,10 +1,9 @@
 import AppKit
 import ClipDomain
 import ClipboardCapture
-import QuickPasteFeature
 
 @MainActor
-final class PasteboardClipCopier: ClipCopying {
+final class PasteboardClipCopier {
   enum CopyError: Error {
     case writeFailed
   }
@@ -15,7 +14,7 @@ final class PasteboardClipCopier: ClipCopying {
     self.pasteboard = pasteboard
   }
 
-  func copy(_ clip: ClipSummary) throws {
+  func copy(_ clip: ClipSummary, plainText: Bool = false) throws {
     let item = NSPasteboardItem()
     item.setString(clip.text, forType: .string)
     item.setData(

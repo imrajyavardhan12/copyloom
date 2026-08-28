@@ -17,6 +17,8 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Source application provenance aggregation and source-aware FTS/filter search.
 - A labeled, accessibility-identifiable Copyloom menu-bar item and diagnostic script.
 - Native Quick Paste panel with global `⌃⌘V`, live FTS5 search, keyboard navigation, copy, pin, delete, use-count tracking, and copy-loop suppression.
+- Previous-application automatic paste with contextual Accessibility explanation, target validation, activation confirmation, copy-only fallback, and explicit plain-text mode.
+- Compact icon-only menu-bar presentation retaining the `Copyloom` accessibility label.
 - Reproducible local/CI scripts and open-source contribution files.
 
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main

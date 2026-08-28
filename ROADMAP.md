@@ -31,7 +31,7 @@ This roadmap uses vertical slices and evidence gates. Dates are intentionally ab
 
 ## M2 — First serious vertical slice (in progress)
 
-**Implemented tracers:** explicit opt-in text/link capture, privacy-marker and sensitive-content rejection before storage, source provenance, deduplication, app-container persistence, pause/resume, ignore-next-copy, local clip count, and a native Quick Paste panel with global `⌃⌘V`, live FTS5 search, keyboard navigation, copy, pin, delete, and use tracking. Configurable ignored-app UI, retention cleanup, previous-app automatic paste, and images remain.
+**Implemented tracers:** explicit opt-in text/link capture, privacy-marker and sensitive-content rejection before storage, source provenance, deduplication, app-container persistence, pause/resume, ignore-next-copy, local clip count, native Quick Paste with global `⌃⌘V`, live FTS5 search, keyboard navigation, copy/pin/delete/use tracking, and Accessibility-gated paste into the retained previous application with copy-only fallback. Configurable ignored-app UI, retention cleanup, clean-user permission/focus matrix, and images remain.
 
 ### Capture and privacy
 

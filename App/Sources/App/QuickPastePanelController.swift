@@ -8,8 +8,12 @@ import SwiftUI
 final class QuickPastePanelController {
   private let panel: QuickPastePanel
   private let model: QuickPasteModel
+  private let pasteCoordinator: PasteCoordinator
 
-  init(repository: any ClipRepository) {
+  init(
+    repository: any ClipRepository,
+    onDeliveryStatus: @escaping PasteCoordinator.StatusHandler
+  ) {
     let panel = QuickPastePanel(
       contentRect: NSRect(x: 0, y: 0, width: 680, height: 460),
       styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
@@ -17,9 +21,14 @@ final class QuickPastePanelController {
       defer: false
     )
     self.panel = panel
+    let pasteCoordinator = PasteCoordinator(
+      onBeforePaste: { [weak panel] in panel?.orderOut(nil) },
+      onStatus: onDeliveryStatus
+    )
+    self.pasteCoordinator = pasteCoordinator
     model = QuickPasteModel(
       repository: repository,
-      copier: PasteboardClipCopier(),
+      delivery: pasteCoordinator,
       onDismiss: { [weak panel] in panel?.orderOut(nil) }
     )
 
@@ -43,11 +52,12 @@ final class QuickPastePanelController {
 
   var isVisible: Bool { panel.isVisible }
 
-  func toggle() {
-    isVisible ? hide() : show()
+  func toggle(targetApplication: NSRunningApplication?) {
+    isVisible ? hide() : show(targetApplication: targetApplication)
   }
 
-  func show() {
+  func show(targetApplication: NSRunningApplication?) {
+    pasteCoordinator.prepare(targetApplication: targetApplication)
     panel.contentView = NSHostingView(rootView: QuickPasteView(model: model))
     positionOnActiveScreen()
     panel.orderFrontRegardless()
@@ -94,7 +104,15 @@ final class QuickPastePanelController {
       model.moveSelection(by: 1)
       return true
     case kVK_Return, kVK_ANSI_KeypadEnter:
-      Task { await model.activateSelected() }
+      let mode: ClipDeliveryMode
+      if modifiers.contains(.command) {
+        mode = .copyOnly
+      } else if modifiers.contains(.option) {
+        mode = .plainText
+      } else {
+        mode = .primary
+      }
+      Task { await model.activateSelected(mode: mode) }
       return true
     case kVK_Escape:
       hide()

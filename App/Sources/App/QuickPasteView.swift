@@ -129,13 +129,13 @@ struct QuickPasteView: View {
   private var footer: some View {
     HStack(spacing: 16) {
       Label("Navigate", systemImage: "arrow.up.arrow.down")
-      Label("Copy", systemImage: "return")
-      Label("Pin", systemImage: "command")
-      Text("P")
-      Label("Delete", systemImage: "option")
-      Text("⌫")
+      Text("↩ Paste")
+      Text("⌘↩ Copy")
+      Text("⌥↩ Plain")
+      Text("⌘P Pin")
+      Text("⌥⌫ Delete")
       Spacer()
-      Text("⌘1–9 Quick Select")
+      Text("⌘1–9")
     }
     .font(.caption)
     .foregroundStyle(.secondary)
