@@ -26,6 +26,7 @@ struct AppDatabaseTests {
       health.appliedMigrations == [
         "001_accepted_text_and_fts",
         "002_application_sources_and_search",
+        "003_clip_lifecycle_actions",
       ]
     )
   }
@@ -99,6 +100,7 @@ struct AppDatabaseTests {
       try await upgraded.health().appliedMigrations == [
         "001_accepted_text_and_fts",
         "002_application_sources_and_search",
+        "003_clip_lifecycle_actions",
       ]
     )
   }

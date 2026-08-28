@@ -263,6 +263,14 @@ private actor RepositorySpy: ClipRepository {
     clips.count
   }
 
+  func setPinned(id: UUID, isPinned: Bool) async throws {}
+
+  func recordUse(id: UUID, at date: Date) async throws {}
+
+  func delete(id: UUID, at date: Date) async throws {
+    clips.removeAll { $0.id == id }
+  }
+
   func recent(limit: Int) async throws -> [ClipSummary] {
     []
   }

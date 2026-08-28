@@ -18,6 +18,8 @@ final class AppModel {
   @ObservationIgnored private var database: AppDatabase?
   @ObservationIgnored private var captureService: ClipboardCaptureService?
   @ObservationIgnored private var monitor: PasteboardPollingMonitor?
+  @ObservationIgnored private var quickPasteController: QuickPastePanelController?
+  @ObservationIgnored private var globalHotKey: GlobalHotKey?
 
   init(defaults: UserDefaults = .standard) {
     let preferences = CapturePreferencesStore(defaults: defaults)
@@ -42,6 +44,15 @@ final class AppModel {
       captureService = service
       monitor = PasteboardPollingMonitor(service: service) { [weak self] outcome in
         self?.handle(outcome)
+      }
+      let quickPasteController = QuickPastePanelController(repository: database.repository)
+      self.quickPasteController = quickPasteController
+      do {
+        globalHotKey = try GlobalHotKey { [weak self] in
+          self?.toggleQuickPaste()
+        }
+      } catch {
+        lastEventText = "The ⌃⌘V shortcut is unavailable; use the Copyloom menu."
       }
       if captureEnabled && !capturePaused {
         monitor?.start()
@@ -118,8 +129,14 @@ final class AppModel {
     lastEventText = "The next clipboard change will be ignored."
   }
 
+  func toggleQuickPaste() {
+    quickPasteController?.toggle()
+  }
+
   func shutdown() {
     monitor?.stop()
+    quickPasteController?.hide()
+    globalHotKey = nil
     try? database?.close()
   }
 

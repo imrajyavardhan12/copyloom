@@ -12,6 +12,11 @@
 		A20000000000000000000003 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* AppModel.swift */; };
 		A20000000000000000000004 /* ClipboardCapture in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* ClipboardCapture */; };
 		A20000000000000000000005 /* ClipDomain in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000003 /* ClipDomain */; };
+		A20000000000000000000006 /* PasteboardClipCopier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000005 /* PasteboardClipCopier.swift */; };
+		A20000000000000000000007 /* QuickPasteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000006 /* QuickPasteView.swift */; };
+		A20000000000000000000008 /* QuickPastePanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000007 /* QuickPastePanelController.swift */; };
+		A20000000000000000000009 /* GlobalHotKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000008 /* GlobalHotKey.swift */; };
+		A2000000000000000000000A /* QuickPasteFeature in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000004 /* QuickPasteFeature */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -19,6 +24,10 @@
 		A30000000000000000000002 /* Copyloom.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Copyloom.entitlements; sourceTree = "<group>"; };
 		A30000000000000000000003 /* Copyloom.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Copyloom.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000004 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		A30000000000000000000005 /* PasteboardClipCopier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteboardClipCopier.swift; sourceTree = "<group>"; };
+		A30000000000000000000006 /* QuickPasteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickPasteView.swift; sourceTree = "<group>"; };
+		A30000000000000000000007 /* QuickPastePanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickPastePanelController.swift; sourceTree = "<group>"; };
+		A30000000000000000000008 /* GlobalHotKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKey.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -29,6 +38,7 @@
 				A20000000000000000000002 /* ClipStore in Frameworks */,
 				A20000000000000000000004 /* ClipboardCapture in Frameworks */,
 				A20000000000000000000005 /* ClipDomain in Frameworks */,
+				A2000000000000000000000A /* QuickPasteFeature in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -57,6 +67,10 @@
 			children = (
 				A30000000000000000000001 /* CopyloomApp.swift */,
 				A30000000000000000000004 /* AppModel.swift */,
+				A30000000000000000000005 /* PasteboardClipCopier.swift */,
+				A30000000000000000000006 /* QuickPasteView.swift */,
+				A30000000000000000000007 /* QuickPastePanelController.swift */,
+				A30000000000000000000008 /* GlobalHotKey.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -89,6 +103,7 @@
 				A90000000000000000000001 /* ClipStore */,
 				A90000000000000000000002 /* ClipboardCapture */,
 				A90000000000000000000003 /* ClipDomain */,
+				A90000000000000000000004 /* QuickPasteFeature */,
 			);
 			productName = Copyloom;
 			productReference = A30000000000000000000003 /* Copyloom.app */;
@@ -147,6 +162,10 @@
 			files = (
 				A20000000000000000000001 /* CopyloomApp.swift in Sources */,
 				A20000000000000000000003 /* AppModel.swift in Sources */,
+				A20000000000000000000006 /* PasteboardClipCopier.swift in Sources */,
+				A20000000000000000000007 /* QuickPasteView.swift in Sources */,
+				A20000000000000000000008 /* QuickPastePanelController.swift in Sources */,
+				A20000000000000000000009 /* GlobalHotKey.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -368,6 +387,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A80000000000000000000001 /* XCLocalSwiftPackageReference "../Packages/CopyloomKit" */;
 			productName = ClipDomain;
+		};
+		A90000000000000000000004 /* QuickPasteFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A80000000000000000000001 /* XCLocalSwiftPackageReference "../Packages/CopyloomKit" */;
+			productName = QuickPasteFeature;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

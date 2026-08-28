@@ -100,6 +100,47 @@ struct ClipRepositoryTests {
     #expect(ghosttyAsText.map(\.id) == [originalID])
   }
 
+  @Test("pins, records use, and soft-deletes through repository actions")
+  func mutatesClipLifecycle() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let firstID = UUID()
+    let secondID = UUID()
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: firstID, text: "first lifecycle clip", capturedAt: .now)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: secondID, text: "second lifecycle clip", capturedAt: .now)
+    )
+
+    try await database.repository.setPinned(id: firstID, isPinned: true)
+    let usedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    try await database.repository.recordUse(id: firstID, at: usedAt)
+    var recent = try await database.repository.recent(limit: 20)
+
+    #expect(recent.first?.id == firstID)
+    #expect(recent.first?.isPinned == true)
+    #expect(recent.first?.useCount == 1)
+    #expect(recent.first?.lastUsedAt == usedAt)
+
+    try await database.repository.delete(id: firstID, at: usedAt)
+    recent = try await database.repository.recent(limit: 20)
+    let deletedSearch = try await database.repository.search(
+      SearchQuery(text: [.term("first")], filters: []),
+      limit: 20
+    )
+
+    #expect(recent.map(\.id) == [secondID])
+    #expect(deletedSearch.isEmpty)
+    #expect(try await database.repository.count() == 1)
+    #expect(try await database.health().fts5IntegrityCheckPassed)
+  }
+
   @Test("treats FTS operators and quotes as text rather than executable query syntax")
   func escapesFTSSyntax() async throws {
     let directory = FileManager.default.temporaryDirectory

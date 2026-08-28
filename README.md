@@ -5,7 +5,7 @@
 Copyloom is an open-source, native macOS clipboard workspace built to become a private local memory layer—not another disposable clipboard-history list.
 
 > [!IMPORTANT]
-> Copyloom is in early vertical-slice development. The app now has explicit opt-in, privacy-gated text/link capture with pause and ignore-next controls. Browsing/search UI, Quick Paste, automatic paste, images and retention settings are not implemented yet.
+> Copyloom is in early vertical-slice development. Privacy-gated text/link capture and the native Quick Paste panel now work. Enter currently copies the selected clip; automatic paste into the previous application, images, the full Library, and retention settings are not implemented yet.
 
 ## Principles
 
@@ -28,6 +28,7 @@ Copyloom is an open-source, native macOS clipboard workspace built to become a p
 - sandboxed menu-bar host with explicit capture onboarding, pause/resume and ignore-next-copy;
 - local sensitive-text detection and concealed/transient/password-manager marker rejection before storage;
 - best-effort source application provenance and ignored-app policy;
+- native Quick Paste panel with `⌃⌘V`, FTS5 search, keyboard navigation, copy, pin and delete actions;
 - Apache-2.0 project license.
 
 See [ROADMAP.md](ROADMAP.md) for what is and is not implemented.
@@ -55,6 +56,8 @@ Run the locally ad-hoc-signed menu-bar app:
 The development build displays **Copyloom** beside a clipboard symbol so it is easy to find. Choose **Enable Clipboard Capture…**, read the privacy explanation, and respond to the macOS pasteboard-access prompt. Use only synthetic/non-sensitive text while testing this early build.
 
 If the item is still missing, rerun `./scripts/run.sh`. Maintainers with Accessibility access for Terminal can run `./scripts/check-menu-bar.sh` for a direct status-item diagnostic.
+
+After capturing synthetic text, press `⌃⌘V`, type a query, use ↑/↓, and press Enter to copy the selection. Automatic Command-V into the previous app is deliberately not enabled yet.
 
 Or open `Copyloom.xcworkspace` in Xcode. If the shell selects Command Line Tools instead of full Xcode:
 

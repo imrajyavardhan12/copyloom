@@ -10,6 +10,7 @@ public enum ClipStoreError: Error, Equatable, Sendable {
   case corruptClipIdentifier(String)
   case corruptClipKind(Int)
   case corruptSourceProvenance(Int)
+  case clipNotFound(UUID)
   case missingSavedClip
   case missingStoredRepresentation
 }
@@ -159,6 +160,44 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     }
   }
 
+  func setPinned(id: UUID, isPinned: Bool) async throws {
+    try await pool.write { database in
+      let rowID = try Self.clipRowID(id: id, database: database)
+      try database.execute(
+        sql: "UPDATE clips SET is_pinned = ? WHERE id = ? AND deleted_at IS NULL",
+        arguments: [isPinned, rowID]
+      )
+    }
+  }
+
+  func recordUse(id: UUID, at date: Date) async throws {
+    try await pool.write { database in
+      let rowID = try Self.clipRowID(id: id, database: database)
+      try database.execute(
+        sql: """
+          UPDATE clips
+          SET last_used_at = ?, use_count = use_count + 1
+          WHERE id = ? AND deleted_at IS NULL
+          """,
+        arguments: [date.millisecondsSince1970, rowID]
+      )
+    }
+  }
+
+  func delete(id: UUID, at date: Date) async throws {
+    try await pool.write { database in
+      let rowID = try Self.clipRowID(id: id, database: database)
+      try database.execute(
+        sql: "UPDATE clips SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
+        arguments: [date.millisecondsSince1970, rowID]
+      )
+      try database.execute(
+        sql: "DELETE FROM search_documents WHERE clip_id = ?",
+        arguments: [rowID]
+      )
+    }
+  }
+
   func recent(limit: Int) async throws -> [ClipSummary] {
     try await fetch(query: SearchQuery(text: [], filters: []), limit: limit)
   }
@@ -233,7 +272,7 @@ struct GRDBClipRepository: ClipRepository, Sendable {
         database,
         sql: """
           SELECT c.id, c.uuid, c.kind, r.inline_text AS text, c.created_at, c.last_seen_at,
-                 c.copy_count, c.is_pinned, c.is_favorite,
+                 c.copy_count, c.use_count, c.last_used_at, c.is_pinned, c.is_favorite,
                  c.latest_source_provenance,
                  latest_app.bundle_id AS source_bundle_id,
                  latest_app.display_name AS source_application_name
@@ -287,6 +326,19 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     )
   }
 
+  private static func clipRowID(id: UUID, database: Database) throws -> Int64 {
+    guard
+      let rowID = try Int64.fetchOne(
+        database,
+        sql: "SELECT id FROM clips WHERE uuid = ? AND deleted_at IS NULL",
+        arguments: [id.uuidString.lowercased()]
+      )
+    else {
+      throw ClipStoreError.clipNotFound(id)
+    }
+    return rowID
+  }
+
   private static func ftsClause(_ clause: SearchTextClause) -> String {
     let value: String
     switch clause {
@@ -302,7 +354,7 @@ struct GRDBClipRepository: ClipRepository, Sendable {
         database,
         sql: """
           SELECT c.uuid, c.kind, r.inline_text AS text, c.created_at, c.last_seen_at,
-                 c.copy_count, c.is_pinned, c.is_favorite,
+                 c.copy_count, c.use_count, c.last_used_at, c.is_pinned, c.is_favorite,
                  c.latest_source_provenance,
                  latest_app.bundle_id AS source_bundle_id,
                  latest_app.display_name AS source_application_name
@@ -331,6 +383,8 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     }
     let createdAt: Int64 = row["created_at"]
     let lastSeenAt: Int64 = row["last_seen_at"]
+    let useCount: Int = row["use_count"]
+    let lastUsedMilliseconds: Int64? = row["last_used_at"]
     let provenanceRaw: Int = row["latest_source_provenance"]
     guard let provenance = ClipSourceProvenance(rawValue: provenanceRaw) else {
       throw ClipStoreError.corruptSourceProvenance(provenanceRaw)
@@ -353,6 +407,8 @@ struct GRDBClipRepository: ClipRepository, Sendable {
       createdAt: Date(millisecondsSince1970: createdAt),
       lastSeenAt: Date(millisecondsSince1970: lastSeenAt),
       copyCount: row["copy_count"],
+      useCount: useCount,
+      lastUsedAt: lastUsedMilliseconds.map(Date.init(millisecondsSince1970:)),
       isPinned: row["is_pinned"],
       isFavorite: row["is_favorite"],
       source: source

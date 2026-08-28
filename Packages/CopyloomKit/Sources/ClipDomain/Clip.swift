@@ -56,6 +56,8 @@ public struct ClipSummary: Equatable, Identifiable, Sendable {
   public let createdAt: Date
   public let lastSeenAt: Date
   public let copyCount: Int
+  public let useCount: Int
+  public let lastUsedAt: Date?
   public let isPinned: Bool
   public let isFavorite: Bool
   public let source: ClipSource?
@@ -67,6 +69,8 @@ public struct ClipSummary: Equatable, Identifiable, Sendable {
     createdAt: Date,
     lastSeenAt: Date,
     copyCount: Int,
+    useCount: Int = 0,
+    lastUsedAt: Date? = nil,
     isPinned: Bool,
     isFavorite: Bool,
     source: ClipSource?
@@ -77,6 +81,8 @@ public struct ClipSummary: Equatable, Identifiable, Sendable {
     self.createdAt = createdAt
     self.lastSeenAt = lastSeenAt
     self.copyCount = copyCount
+    self.useCount = useCount
+    self.lastUsedAt = lastUsedAt
     self.isPinned = isPinned
     self.isFavorite = isFavorite
     self.source = source

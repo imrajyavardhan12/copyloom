@@ -141,6 +141,15 @@ enum Migrations {
           INSERT INTO clip_fts(clip_fts) VALUES ('rebuild');
           """)
     }
+
+    migrator.registerMigration("003_clip_lifecycle_actions") { database in
+      try database.execute(
+        sql: """
+          ALTER TABLE clips ADD COLUMN last_used_at INTEGER;
+          ALTER TABLE clips
+              ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0 CHECK (use_count >= 0);
+          """)
+    }
     return migrator
   }
 }

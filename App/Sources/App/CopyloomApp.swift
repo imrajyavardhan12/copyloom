@@ -18,6 +18,13 @@ struct CopyloomApp: App {
 
       Divider()
 
+      Button("Open Quick Paste") {
+        model.toggleQuickPaste()
+      }
+      .keyboardShortcut("v", modifiers: [.control, .command])
+
+      Divider()
+
       if model.captureEnabled {
         Button(model.capturePaused ? "Resume Capture" : "Pause Capture") {
           model.togglePause()
