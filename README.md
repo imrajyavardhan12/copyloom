@@ -58,7 +58,9 @@ The menu bar uses a compact clipboard icon with the accessibility label **Copylo
 
 If the item is still missing, rerun `./scripts/run.sh`. Maintainers with Accessibility access for Terminal can run `./scripts/check-menu-bar.sh` for a direct status-item diagnostic.
 
-After capturing synthetic text, press `⌃⌘V`, type a query, and use ↑/↓. Enter pastes into the retained previous app when Accessibility is granted; ⌘Enter always copies only; ⌥Enter selects plain-text delivery. Copyloom explains the permission before requesting it and remains useful without it.
+After capturing synthetic text, press `⌃⌘V`, type a query, and use ↑/↓. Enter pastes into the retained previous app when Accessibility is granted; ⌘Enter always copies only. Copyloom explains the permission before requesting it and remains useful without it.
+
+All currently captured clips are already plain text, so a separate plain-paste shortcut would have no visible effect. It will be exposed when rich-text/HTML/RTF representations are implemented.
 
 Or open `Copyloom.xcworkspace` in Xcode. If the shell selects Command Line Tools instead of full Xcode:
 

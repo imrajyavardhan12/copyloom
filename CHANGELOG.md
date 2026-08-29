@@ -19,7 +19,7 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Native Quick Paste panel with global `⌃⌘V`, live FTS5 search, keyboard navigation, copy, pin, delete, use-count tracking, and copy-loop suppression.
 - Previous-application automatic paste with contextual Accessibility explanation, target validation, activation confirmation, copy-only fallback, and explicit plain-text mode.
 - Compact icon-only menu-bar presentation retaining the `Copyloom` accessibility label.
-- Explicit Quick Paste footer labels distinguishing Return paste, Command-Return copy-only, and Option-Return plain paste.
+- Explicit Quick Paste footer labels distinguishing Return paste and Command-Return copy-only; the non-distinct plain-paste hint is hidden until rich representations exist.
 - Reproducible local/CI scripts and open-source contribution files.
 
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main

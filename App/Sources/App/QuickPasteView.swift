@@ -131,7 +131,6 @@ struct QuickPasteView: View {
       Text("↑↓ Navigate")
       Text("Return: Paste")
       Text("⌘Return: Copy only")
-      Text("⌥Return: Plain paste")
       Spacer()
       Text("⌘P Pin")
       Text("⌥⌫ Delete")
