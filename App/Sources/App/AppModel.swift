@@ -11,6 +11,7 @@ final class AppModel {
   private(set) var captureEnabled: Bool
   private(set) var capturePaused: Bool
   private(set) var clipCount = 0
+  private(set) var automaticPasteEnabled = false
   private(set) var statusText: String
   private(set) var lastEventText: String?
 
@@ -52,6 +53,7 @@ final class AppModel {
         }
       )
       self.quickPasteController = quickPasteController
+      automaticPasteEnabled = quickPasteController.hasPostEventAccess
       do {
         globalHotKey = try GlobalHotKey { [weak self] in
           self?.toggleQuickPaste()
@@ -135,9 +137,21 @@ final class AppModel {
   }
 
   func toggleQuickPaste() {
+    automaticPasteEnabled = quickPasteController?.hasPostEventAccess ?? false
     quickPasteController?.toggle(
       targetApplication: NSWorkspace.shared.frontmostApplication
     )
+  }
+
+  func requestAutomaticPastePermission() {
+    // Let the status-menu click finish before presenting a modal alert. Without
+    // this handoff, the originating click can activate the alert's default
+    // button before the user has a chance to read the explanation.
+    Task { @MainActor [weak self] in
+      try? await Task.sleep(for: .milliseconds(500))
+      guard let self else { return }
+      automaticPasteEnabled = quickPasteController?.requestPostEventAccess() ?? false
+    }
   }
 
   func shutdown() {

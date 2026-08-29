@@ -51,6 +51,12 @@ final class QuickPastePanelController {
   }
 
   var isVisible: Bool { panel.isVisible }
+  var hasPostEventAccess: Bool { pasteCoordinator.hasPostEventAccess }
+
+  @discardableResult
+  func requestPostEventAccess() -> Bool {
+    pasteCoordinator.requestPostEventAccess()
+  }
 
   func toggle(targetApplication: NSRunningApplication?) {
     isVisible ? hide() : show(targetApplication: targetApplication)

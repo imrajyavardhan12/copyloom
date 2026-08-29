@@ -11,7 +11,9 @@ final class PasteCoordinator: ClipDelivering {
   private let copier: PasteboardClipCopier
   private let onBeforePaste: @MainActor () -> Void
   private let onStatus: StatusHandler
-  private weak var targetApplication: NSRunningApplication?
+  // Keep a strong reference for the lifetime of the panel. NSWorkspace may
+  // return a short-lived wrapper that disappears if retained weakly.
+  private var targetApplication: NSRunningApplication?
 
   init(
     copier: PasteboardClipCopier = PasteboardClipCopier(),
@@ -23,6 +25,10 @@ final class PasteCoordinator: ClipDelivering {
     self.onStatus = onStatus
   }
 
+  var hasPostEventAccess: Bool {
+    CGPreflightPostEventAccess()
+  }
+
   func prepare(targetApplication: NSRunningApplication?) {
     guard targetApplication?.bundleIdentifier != Bundle.main.bundleIdentifier else {
       self.targetApplication = nil
@@ -32,19 +38,21 @@ final class PasteCoordinator: ClipDelivering {
   }
 
   func deliver(_ clip: ClipSummary, mode: ClipDeliveryMode) async throws {
+    let preparedTarget = targetApplication
+    defer { targetApplication = nil }
     try copier.copy(clip, plainText: mode == .plainText)
 
     guard mode != .copyOnly else {
       onStatus("Copied to the clipboard.")
       return
     }
-    guard let targetApplication, !targetApplication.isTerminated else {
+    guard let targetApplication = preparedTarget, !targetApplication.isTerminated else {
       onStatus("Copied; the original application is no longer available.")
       return
     }
-    guard ensurePostEventAccess() else {
+    guard hasPostEventAccess else {
       onBeforePaste()
-      onStatus("Copied. Accessibility is required for automatic paste.")
+      onStatus("Copied. Enable Automatic Paste from the Copyloom menu.")
       return
     }
 
@@ -57,6 +65,18 @@ final class PasteCoordinator: ClipDelivering {
       onStatus("Copied; the original application did not become active in time.")
       return
     }
+
+    // A nonactivating panel can make the target app remain frontmost while its
+    // text field is not yet key again. Give AppKit one short focus-settling
+    // window before posting Command-V, then verify the target did not change.
+    try? await Task.sleep(for: .milliseconds(120))
+    guard
+      NSWorkspace.shared.frontmostApplication?.processIdentifier
+        == targetApplication.processIdentifier
+    else {
+      onStatus("Copied; focus changed before automatic paste.")
+      return
+    }
     guard CGPreflightPostEventAccess() else {
       onStatus("Copied; Accessibility permission is no longer available.")
       return
@@ -66,8 +86,12 @@ final class PasteCoordinator: ClipDelivering {
     onStatus(mode == .plainText ? "Pasted as plain text." : "Pasted into the original application.")
   }
 
-  private func ensurePostEventAccess() -> Bool {
-    guard !CGPreflightPostEventAccess() else { return true }
+  @discardableResult
+  func requestPostEventAccess() -> Bool {
+    guard !hasPostEventAccess else {
+      onStatus("Automatic paste is enabled.")
+      return true
+    }
 
     let alert = NSAlert()
     alert.alertStyle = .informational
@@ -79,9 +103,18 @@ final class PasteCoordinator: ClipDelivering {
       """
     alert.addButton(withTitle: "Open Accessibility Settings")
     alert.addButton(withTitle: "Copy Only")
-    guard alert.runModal() == .alertFirstButtonReturn else { return false }
+    guard alert.runModal() == .alertFirstButtonReturn else {
+      onStatus("Automatic paste remains disabled; copy-only still works.")
+      return false
+    }
 
-    return CGRequestPostEventAccess()
+    let granted = CGRequestPostEventAccess()
+    onStatus(
+      granted
+        ? "Automatic paste is enabled."
+        : "Enable Copyloom in System Settings → Privacy & Security → Accessibility."
+    )
+    return granted
   }
 
   private func waitUntilFrontmost(_ target: NSRunningApplication) async -> Bool {
