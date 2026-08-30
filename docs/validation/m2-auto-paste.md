@@ -23,6 +23,7 @@ A red-capable TextEdit harness now verifies the clipboard value and target text 
 
 1. The selected clip was written correctly, but the first implementation retained the target `NSRunningApplication` weakly. The wrapper disappeared before delivery and Copyloom correctly reported `Copied; the original application is no longer available.` The coordinator now holds the target strongly for one panel session and clears it after delivery.
 2. After rebuilding/resetting the ad-hoc development app, Copyloom's own post-event permission was absent. Copyloom copied successfully and reported that automatic paste must be enabled. An explicit menu setup action now makes this state visible and recoverable.
+3. Two stale development processes were simultaneously running from the same bundle path, producing two icons; the older process could retain the hotkey while the newer process showed the UI. `scripts/run.sh` now terminates all Copyloom processes before launch and `scripts/check-menu-bar.sh` fails unless exactly one process/status item exists.
 
 Command-Return has passed the real signed-host copy-only path. Clipboard content, panel dismissal, foreign keys, and FTS integrity were verified with synthetic fixtures and cleaned afterward.
 

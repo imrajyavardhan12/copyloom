@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! pgrep -qf '/Copyloom.app/Contents/MacOS/Copyloom'; then
+copyloom_pids=($(pgrep -x Copyloom || true))
+if (( ${#copyloom_pids[@]} == 0 )); then
     echo 'FAIL: Copyloom is not running.' >&2
+    exit 1
+fi
+if (( ${#copyloom_pids[@]} != 1 )); then
+    printf 'FAIL: expected one Copyloom process, found %d (%s).\n' \
+        "${#copyloom_pids[@]}" "${copyloom_pids[*]}" >&2
     exit 1
 fi
 

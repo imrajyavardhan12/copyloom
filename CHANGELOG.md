@@ -19,6 +19,7 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Native Quick Paste panel with global `⌃⌘V`, live FTS5 search, keyboard navigation, copy, pin, delete, use-count tracking, and copy-loop suppression.
 - Previous-application automatic paste with contextual Accessibility explanation, target validation, activation confirmation, and copy-only fallback.
 - Fixed retained-target loss caused by weak `NSRunningApplication` storage and added an explicit menu action for automatic-paste permission setup.
+- Development launcher now terminates every stale Copyloom process and verifies exactly one instance, preventing duplicate menu icons and old-process hotkey ownership.
 - Compact icon-only menu-bar presentation retaining the `Copyloom` accessibility label.
 - Explicit Quick Paste footer labels distinguishing Return paste and Command-Return copy-only; the non-distinct plain-paste hint is hidden until rich representations exist.
 - Reproducible local/CI scripts and open-source contribution files.
