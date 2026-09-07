@@ -150,6 +150,10 @@ private actor QuickPasteRepositorySpy: ClipRepository {
     pin = Pin(id: id, isPinned: isPinned)
   }
 
+  func setFavorite(id: UUID, isFavorite: Bool) async throws {}
+
+  func deleteExpired(before cutoff: Date) async throws -> Int { 0 }
+
   func recordUse(id: UUID, at date: Date) async throws {
     use = Use(id: id, date: date)
   }

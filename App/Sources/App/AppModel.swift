@@ -14,8 +14,11 @@ final class AppModel {
   private(set) var automaticPasteEnabled = false
   private(set) var statusText: String
   private(set) var lastEventText: String?
+  private(set) var retentionDays: Int = CaptureSettings.defaultRetentionDays
+  private(set) var ignoredAppCount = 0
 
-  @ObservationIgnored private let preferences: CapturePreferencesStore
+  @ObservationIgnored private let settingsStore: CaptureSettingsStore
+  @ObservationIgnored private var settings: CaptureSettings
   @ObservationIgnored private var database: AppDatabase?
   @ObservationIgnored private var captureService: ClipboardCaptureService?
   @ObservationIgnored private var monitor: PasteboardPollingMonitor?
@@ -23,16 +26,28 @@ final class AppModel {
   @ObservationIgnored private var globalHotKey: GlobalHotKey?
 
   init(defaults: UserDefaults = .standard) {
-    let preferences = CapturePreferencesStore(defaults: defaults)
-    let initialCaptureEnabled = preferences.captureEnabled
-    let initialCapturePaused = initialCaptureEnabled && preferences.capturePaused
-    self.preferences = preferences
+    let store = CaptureSettingsStore(defaults: defaults)
+    let loaded = store.load()
+    settingsStore = store
+    settings = loaded.settings
+    retentionDays = loaded.settings.retentionDays
+    ignoredAppCount = loaded.settings.ignoredBundleIdentifiers.count
+
+    let initialCaptureEnabled = loaded.settings.captureEnabled
+    let initialCapturePaused = initialCaptureEnabled && loaded.settings.capturePaused
     captureEnabled = initialCaptureEnabled
     capturePaused = initialCapturePaused
-    statusText =
-      initialCaptureEnabled
-      ? (initialCapturePaused ? "Capture is paused" : "Monitoring clipboard")
-      : "Capture is off"
+    if loaded.didFailClosed {
+      statusText = "Settings invalid — capture is off"
+      lastEventText =
+        loaded.errorDescription
+        ?? "Capture settings were unreadable. Exclusions were restored to safe defaults."
+    } else {
+      statusText =
+        initialCaptureEnabled
+        ? (initialCapturePaused ? "Capture is paused" : "Monitoring clipboard")
+        : "Capture is off"
+    }
 
     do {
       let database = try AppDatabase.open(at: Self.databaseURL())
@@ -40,7 +55,7 @@ final class AppModel {
       let service = ClipboardCaptureService(
         pasteboard: NSPasteboardReader(),
         repository: database.repository,
-        configuration: preferences.configuration
+        configuration: captureConfiguration()
       )
       captureService = service
       monitor = PasteboardPollingMonitor(service: service) { [weak self] outcome in
@@ -65,6 +80,7 @@ final class AppModel {
         monitor?.start()
       }
       refreshClipCount()
+      runRetentionCleanup()
     } catch {
       captureEnabled = false
       capturePaused = false
@@ -88,24 +104,27 @@ final class AppModel {
     alert.addButton(withTitle: "Cancel")
     guard alert.runModal() == .alertFirstButtonReturn else { return }
 
+    settings.captureEnabled = true
+    settings.capturePaused = false
+    persistSettings()
     captureEnabled = true
     capturePaused = false
-    preferences.captureEnabled = true
-    preferences.capturePaused = false
     applyConfiguration()
     captureService?.adoptCurrentChangeCount()
     monitor?.start()
     statusText = "Monitoring clipboard"
     lastEventText = "Waiting for the next copy."
+    runRetentionCleanup()
   }
 
   func disableCapture() {
     monitor?.stop()
     captureService?.adoptCurrentChangeCount()
+    settings.captureEnabled = false
+    settings.capturePaused = false
+    persistSettings()
     captureEnabled = false
     capturePaused = false
-    preferences.captureEnabled = false
-    preferences.capturePaused = false
     applyConfiguration()
     statusText = "Capture is off"
     lastEventText = nil
@@ -114,7 +133,8 @@ final class AppModel {
   func togglePause() {
     guard captureEnabled else { return }
     capturePaused.toggle()
-    preferences.capturePaused = capturePaused
+    settings.capturePaused = capturePaused
+    persistSettings()
     applyConfiguration()
 
     if capturePaused {
@@ -136,6 +156,28 @@ final class AppModel {
     lastEventText = "The next clipboard change will be ignored."
   }
 
+  /// Deletes clips older than the retention window. Pinned/favorite exempt.
+  func deleteExpiredNow() {
+    guard let repository = database?.repository else { return }
+    let days = settings.retentionDays
+    Task { [weak self] in
+      do {
+        let cutoff = Date().addingTimeInterval(TimeInterval(-days * 24 * 3_600))
+        let expired = try await repository.deleteExpired(before: cutoff)
+        guard !Task.isCancelled else { return }
+        self?.refreshClipCount()
+        if expired > 0 {
+          let noun = expired == 1 ? "clip" : "clips"
+          self?.lastEventText = "Deleted \(expired) expired \(noun) older than \(days) days."
+        } else {
+          self?.lastEventText = "No clips older than \(days) days."
+        }
+      } catch {
+        self?.lastEventText = "Retention cleanup failed; history was left untouched."
+      }
+    }
+  }
+
   func toggleQuickPaste() {
     automaticPasteEnabled = quickPasteController?.hasPostEventAccess ?? false
     quickPasteController?.toggle(
@@ -154,6 +196,16 @@ final class AppModel {
     }
   }
 
+  /// Exact app bundle path for the running process. Ad-hoc dev builds change
+  /// identity on every rebuild, so the TCC entry must match this binary.
+  var runningAppPath: String {
+    Bundle.main.bundlePath
+  }
+
+  func revealRunningAppInFinder() {
+    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: runningAppPath)])
+  }
+
   func shutdown() {
     monitor?.stop()
     quickPasteController?.hide()
@@ -161,8 +213,40 @@ final class AppModel {
     try? database?.close()
   }
 
+  private func captureConfiguration() -> CaptureConfiguration {
+    CaptureConfiguration(
+      isEnabled: settings.captureEnabled,
+      isPaused: settings.capturePaused,
+      ignoredBundleIdentifiers: settings.ignoredBundleIdentifiers
+    )
+  }
+
+  private func persistSettings() {
+    settingsStore.save(settings)
+    retentionDays = settings.retentionDays
+    ignoredAppCount = settings.ignoredBundleIdentifiers.count
+  }
+
   private func applyConfiguration() {
-    captureService?.updateConfiguration(preferences.configuration)
+    captureService?.updateConfiguration(captureConfiguration())
+  }
+
+  private func runRetentionCleanup() {
+    guard database != nil else { return }
+    let days = settings.retentionDays
+    Task { [weak self] in
+      guard let self else { return }
+      do {
+        let cutoff = Date().addingTimeInterval(TimeInterval(-days * 24 * 3_600))
+        let expired = try await self.database?.repository.deleteExpired(before: cutoff) ?? 0
+        guard !Task.isCancelled else { return }
+        if expired > 0 {
+          self.refreshClipCount()
+        }
+      } catch {
+        // Leave history untouched; surface only on manual cleanup.
+      }
+    }
   }
 
   private func handle(_ outcome: CaptureOutcome) {
@@ -223,55 +307,6 @@ final class AppModel {
     let directory = applicationSupport.appending(path: "Copyloom", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appending(path: "history.sqlite")
-  }
-}
-
-@MainActor
-private final class CapturePreferencesStore {
-  private enum Key {
-    static let captureEnabled = "capture.enabled"
-    static let capturePaused = "capture.paused"
-    static let ignoredBundleIdentifiers = "capture.ignoredBundleIdentifiers"
-  }
-
-  private static let defaultIgnoredBundleIdentifiers: Set<String> = [
-    "com.1password.1password",
-    "com.apple.keychainaccess",
-    "com.apple.passwords",
-    "com.bitwarden.desktop",
-    "in.sinew.enpass-desktop",
-    "org.keepassxc.keepassxc",
-  ]
-
-  private let defaults: UserDefaults
-
-  init(defaults: UserDefaults) {
-    self.defaults = defaults
-  }
-
-  var captureEnabled: Bool {
-    get { defaults.object(forKey: Key.captureEnabled) as? Bool ?? false }
-    set { defaults.set(newValue, forKey: Key.captureEnabled) }
-  }
-
-  var capturePaused: Bool {
-    get { defaults.object(forKey: Key.capturePaused) as? Bool ?? false }
-    set { defaults.set(newValue, forKey: Key.capturePaused) }
-  }
-
-  var ignoredBundleIdentifiers: Set<String> {
-    guard let stored = defaults.array(forKey: Key.ignoredBundleIdentifiers) as? [String] else {
-      return Self.defaultIgnoredBundleIdentifiers
-    }
-    return Set(stored.map { $0.lowercased() })
-  }
-
-  var configuration: CaptureConfiguration {
-    CaptureConfiguration(
-      isEnabled: captureEnabled,
-      isPaused: capturePaused,
-      ignoredBundleIdentifiers: ignoredBundleIdentifiers
-    )
   }
 }
 

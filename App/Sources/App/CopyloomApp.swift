@@ -43,6 +43,10 @@ struct CopyloomApp: App {
         }
         .disabled(model.capturePaused)
 
+        Button("Delete Expired History (\(model.retentionDays)d, keeps pinned/favorites)…") {
+          model.deleteExpiredNow()
+        }
+
         Button("Turn Off Capture") {
           model.disableCapture()
         }
@@ -51,6 +55,22 @@ struct CopyloomApp: App {
           model.enableCapture()
         }
       }
+
+      Divider()
+
+      Text("Ignoring \(model.ignoredAppCount) apps · keeps history \(model.retentionDays) days")
+        .foregroundStyle(.secondary)
+
+      Button("Reveal Running App in Finder") {
+        model.revealRunningAppInFinder()
+      }
+      .help(model.runningAppPath)
+
+      Text(model.runningAppPath)
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .lineLimit(2)
+        .truncationMode(.middle)
 
       Divider()
 

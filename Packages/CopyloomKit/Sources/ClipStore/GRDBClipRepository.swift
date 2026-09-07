@@ -170,6 +170,16 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     }
   }
 
+  func setFavorite(id: UUID, isFavorite: Bool) async throws {
+    try await pool.write { database in
+      let rowID = try Self.clipRowID(id: id, database: database)
+      try database.execute(
+        sql: "UPDATE clips SET is_favorite = ? WHERE id = ? AND deleted_at IS NULL",
+        arguments: [isFavorite, rowID]
+      )
+    }
+  }
+
   func recordUse(id: UUID, at date: Date) async throws {
     try await pool.write { database in
       let rowID = try Self.clipRowID(id: id, database: database)
@@ -195,6 +205,35 @@ struct GRDBClipRepository: ClipRepository, Sendable {
         sql: "DELETE FROM search_documents WHERE clip_id = ?",
         arguments: [rowID]
       )
+    }
+  }
+
+  @discardableResult
+  func deleteExpired(before cutoff: Date) async throws -> Int {
+    let cutoffMilliseconds = cutoff.millisecondsSince1970
+    return try await pool.write { database in
+      try database.execute(
+        sql: """
+          UPDATE clips
+          SET deleted_at = ?
+          WHERE deleted_at IS NULL
+            AND is_pinned = 0
+            AND is_favorite = 0
+            AND last_seen_at < ?
+          """,
+        arguments: [cutoffMilliseconds, cutoffMilliseconds]
+      )
+      let expiredCount = database.changesCount
+      guard expiredCount > 0 else { return 0 }
+      // Keep FTS consistent: search_documents DELETE triggers clip_fts cleanup.
+      try database.execute(
+        sql: """
+          DELETE FROM search_documents
+          WHERE clip_id IN (SELECT id FROM clips WHERE deleted_at IS NOT NULL)
+          """,
+        arguments: []
+      )
+      return expiredCount
     }
   }
 

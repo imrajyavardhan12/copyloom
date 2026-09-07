@@ -22,6 +22,10 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Development launcher now terminates every stale Copyloom process and verifies exactly one instance, preventing duplicate menu icons and old-process hotkey ownership.
 - Compact icon-only menu-bar presentation retaining the `Copyloom` accessibility label.
 - Explicit Quick Paste footer labels distinguishing Return paste and Command-Return copy-only; the non-distinct plain-paste hint is hidden until rich representations exist.
+- Versioned capture settings stored outside history with fail-closed unknown/corrupt handling and legacy migration.
+- Time-based retention deleting unpinned/unfavorited clips older than 30 days with FTS cleanup, automatic on launch plus manual menu action.
+- Clip favorite action supporting retention exemption and future Library Favorites.
+- Menu-bar diagnostics showing ignored-app count, retention window, running app path, and Reveal in Finder to disambiguate ad-hoc development TCC identity.
 - Reproducible local/CI scripts and open-source contribution files.
 
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main

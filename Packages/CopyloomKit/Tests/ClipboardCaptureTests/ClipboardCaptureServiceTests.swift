@@ -265,6 +265,10 @@ private actor RepositorySpy: ClipRepository {
 
   func setPinned(id: UUID, isPinned: Bool) async throws {}
 
+  func setFavorite(id: UUID, isFavorite: Bool) async throws {}
+
+  func deleteExpired(before cutoff: Date) async throws -> Int { 0 }
+
   func recordUse(id: UUID, at date: Date) async throws {}
 
   func delete(id: UUID, at date: Date) async throws {

@@ -197,4 +197,56 @@ struct ClipRepositoryTests {
     #expect(recent.map(\.id) == [firstID])
     #expect(recent.first?.text == "Cafe\u{301}\r\nstatus")
   }
+
+  @Test("expires old unpinned history while keeping pinned, favorite and recent clips")
+  func expiresOldHistory() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let oldDate = Date(timeIntervalSince1970: 1_700_000_000)
+    let cutoff = oldDate.addingTimeInterval(30 * 24 * 3_600)
+    let recentDate = cutoff.addingTimeInterval(3_600)
+
+    let expiredID = UUID()
+    let pinnedID = UUID()
+    let favoriteID = UUID()
+    let recentID = UUID()
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: expiredID, text: "expired old clip", capturedAt: oldDate)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: pinnedID, text: "pinned old clip", capturedAt: oldDate)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: favoriteID, text: "favorite old clip", capturedAt: oldDate)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: recentID, text: "recent clip", capturedAt: recentDate)
+    )
+    try await database.repository.setPinned(id: pinnedID, isPinned: true)
+    try await database.repository.setFavorite(id: favoriteID, isFavorite: true)
+
+    let expired = try await database.repository.deleteExpired(before: cutoff)
+    #expect(expired == 1)
+
+    let remaining = try await database.repository.recent(limit: 20)
+    #expect(remaining.map(\.id).contains(recentID))
+    #expect(remaining.map(\.id).contains(pinnedID))
+    #expect(remaining.map(\.id).contains(favoriteID))
+    #expect(!remaining.map(\.id).contains(expiredID))
+
+    let expiredSearch = try await database.repository.search(
+      SearchQuery(text: [.term("expired")], filters: []),
+      limit: 20
+    )
+    #expect(expiredSearch.isEmpty)
+    #expect(try await database.health().fts5IntegrityCheckPassed)
+
+    let secondRun = try await database.repository.deleteExpired(before: cutoff)
+    #expect(secondRun == 0)
+  }
 }
