@@ -356,6 +356,8 @@ final class AppModel {
       lastEventText = "Sensitive content was not saved."
     case .skipped(.preflightTimeout):
       lastEventText = "An image was not saved during safety screening."
+    case .skipped(.unreadableImage):
+      lastEventText = "An image could not be read and was not saved."
     case .skipped(.ignoredApplication):
       lastEventText = "A copy from an ignored application was not saved."
     case .skipped(.tooLarge):

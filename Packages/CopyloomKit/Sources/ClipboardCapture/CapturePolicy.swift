@@ -43,6 +43,7 @@ public enum CaptureSkipReason: Equatable, Sendable {
   case unsupportedType
   case emptyText
   case emptyImage
+  case unreadableImage
   case tooLarge
   case sensitiveContent
   case preflightTimeout

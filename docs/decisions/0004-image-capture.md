@@ -116,10 +116,13 @@ them, per ADR-0002's minimal-migration rule.
 ## Slice order
 1. **Migration 004 + AttachmentStore**: tables, content-addressed
    write/read, orphan reconciler, purge-file hookup, tests. No capture change.
+   (Landed.)
 2. **Capture image path**: type gate, size/pixel caps, `saveAcceptedImage`,
-   dedup, stubbed preflight, fake-pasteboard integration tests.
+   dedup, stubbed preflight, fake-pasteboard integration tests. (Landed.)
 3. **Vision preflight**: implementation, timeout, sensitive-fixture tests,
    signed-host manual evidence (screenshot with text, secret-bearing image).
+   (Implementation + unit tests landed; signed-host manual evidence pending
+   slice 4's end-to-end pass.)
 4. **UX + acceptance**: Quick Paste thumbnails, image paste-back,
    retention-file GC wiring, A03 matrix, `docs/validation/m2-images.md`.
 

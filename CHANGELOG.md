@@ -29,6 +29,7 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Native Settings window with Ignored Apps (add/remove/reset plus running-app picker), History retention stepper with manual cleanup, and Permissions status with running-app identity.
 - Image attachment storage foundation: migration 004, content-addressed `Attachments/v1` files, tombstone-aware file GC, `type:image` search. Capture not yet wired.
 - Image capture path with stubbed fail-closed privacy gate: pasteboard flavor gate (text wins on mixed snapshots), byte/pixel ceilings, preflight timeout race, 12 new policy/service tests. Vision OCR gate stays slice 3; the default gate refuses all images.
+- Vision privacy gate: dimensions-only decode, in-memory OCR with accurate recognition and language correction off, existing sensitive detector over OCR text, once-guarded Vision continuation, 6 new gate tests including live-Vision blank-image plumbing.
 - Reproducible local/CI scripts and open-source contribution files.
 
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main
