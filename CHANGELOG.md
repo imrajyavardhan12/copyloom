@@ -32,6 +32,7 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Vision privacy gate: dimensions-only decode, in-memory OCR with accurate recognition and language correction off, existing sensitive detector over OCR text, once-guarded Vision continuation, 6 new gate tests including live-Vision blank-image plumbing.
 - Image capture activation: Vision gate wired into the service, Quick Paste lazy thumbnails, image paste-back with loop-suppression markers, startup orphan reconciliation. A03 manual evidence pending.
 - OCR-tolerant PEM refusal: live screenshots mangle dash runs past exact patterns, so the gate adds an OCR-only tolerant header check; prose about keys still passes. Evidence in `docs/validation/m2-images.md`.
+- Search benchmark runner + first 100k-record report: 10 of 13 classes pass (most <1 ms); app-filter pre-resolution and pinned timeline walks fixed from the numbers. Giant-match `bm25` sorts stay open as a product decision. Evidence in `docs/validation/m2-benchmarks.md`.
 - Reproducible local/CI scripts and open-source contribution files.
 
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main
