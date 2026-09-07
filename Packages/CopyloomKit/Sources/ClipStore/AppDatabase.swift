@@ -23,12 +23,14 @@ public struct DatabaseHealth: Equatable, Sendable {
 
 public final class AppDatabase: Sendable {
   public let repository: any ClipRepository
+  public let attachments: AttachmentStore
 
   private let pool: DatabasePool
 
-  private init(pool: DatabasePool) {
+  private init(pool: DatabasePool, attachments: AttachmentStore) {
     self.pool = pool
-    repository = GRDBClipRepository(pool: pool)
+    self.attachments = attachments
+    repository = GRDBClipRepository(pool: pool, attachments: attachments)
   }
 
   public static func open(at url: URL) throws -> AppDatabase {
@@ -42,7 +44,12 @@ public final class AppDatabase: Sendable {
     let pool = try DatabasePool(path: url.path, configuration: configuration)
     do {
       try Migrations.makeMigrator().migrate(pool)
-      return AppDatabase(pool: pool)
+      let attachments = AttachmentStore(
+        root: url.deletingLastPathComponent()
+          .appending(path: "Attachments/v1", directoryHint: .isDirectory)
+      )
+      try attachments.prepare()
+      return AppDatabase(pool: pool, attachments: attachments)
     } catch {
       try? pool.close()
       throw error

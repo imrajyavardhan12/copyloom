@@ -144,6 +144,12 @@ private actor QuickPasteRepositorySpy: ClipRepository {
     throw TestError.unexpectedCall
   }
 
+  func saveAcceptedImage(_ clip: AcceptedImageClip) async throws -> ClipSummary {
+    throw TestError.unexpectedCall
+  }
+
+  func attachment(for id: UUID) async throws -> ClipAttachment? { nil }
+
   func count() async throws -> Int { clips.count }
 
   func setPinned(id: UUID, isPinned: Bool) async throws {

@@ -4,6 +4,12 @@ public protocol ClipRepository: Sendable {
   @discardableResult
   func saveAcceptedText(_ clip: AcceptedTextClip) async throws -> ClipSummary
 
+  @discardableResult
+  func saveAcceptedImage(_ clip: AcceptedImageClip) async throws -> ClipSummary
+
+  /// File metadata for an image clip's attachment, if present.
+  func attachment(for id: UUID) async throws -> ClipAttachment?
+
   func count() async throws -> Int
 
   func setPinned(id: UUID, isPinned: Bool) async throws

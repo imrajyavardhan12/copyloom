@@ -27,6 +27,7 @@ struct AppDatabaseTests {
         "001_accepted_text_and_fts",
         "002_application_sources_and_search",
         "003_clip_lifecycle_actions",
+        "004_image_attachments",
       ]
     )
   }
@@ -101,12 +102,49 @@ struct AppDatabaseTests {
         "001_accepted_text_and_fts",
         "002_application_sources_and_search",
         "003_clip_lifecycle_actions",
+        "004_image_attachments",
       ]
     )
   }
 
-  @Test("does not replace a corrupt database when open fails")
-  func preservesCorruptDatabase() throws {
+  @Test("migrates version three to image attachments without losing clips")
+  func migratesVersionThreeData() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let databaseURL = directory.appending(path: "copyloom.sqlite")
+
+    let versionThreePool = try DatabasePool(path: databaseURL.path)
+    try Migrations.makeMigrator().migrate(
+      versionThreePool,
+      upTo: "003_clip_lifecycle_actions"
+    )
+    try await versionThreePool.write { database in
+      try database.execute(
+        sql:
+          "INSERT INTO clips (uuid, kind, hash_version, dedupe_hash, representation_set_hash, byte_count, created_at, last_seen_at, copy_count) VALUES (?, 0, 1, randomblob(32), randomblob(32), 5, 1700000000000, 1700000000000, 1)",
+        arguments: [UUID().uuidString.lowercased()]
+      )
+    }
+    try versionThreePool.close()
+
+    let upgraded = try AppDatabase.open(at: databaseURL)
+    defer { try? upgraded.close() }
+    #expect(try await upgraded.repository.count() == 1)
+    #expect(
+      try await upgraded.health().appliedMigrations == [
+        "001_accepted_text_and_fts",
+        "002_application_sources_and_search",
+        "003_clip_lifecycle_actions",
+        "004_image_attachments",
+      ]
+    )
+  }
+
+  @Test("does not replace a corrupt database when open fails") func preservesCorruptDatabase()
+    throws
+  {
     let directory = FileManager.default.temporaryDirectory
       .appending(path: UUID().uuidString, directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

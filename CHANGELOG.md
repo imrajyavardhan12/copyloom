@@ -27,6 +27,7 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Clip favorite action supporting retention exemption and future Library Favorites.
 - Menu-bar diagnostics showing ignored-app count, retention window, running app path, and Reveal in Finder to disambiguate ad-hoc development TCC identity.
 - Native Settings window with Ignored Apps (add/remove/reset plus running-app picker), History retention stepper with manual cleanup, and Permissions status with running-app identity.
+- Image attachment storage foundation: migration 004, content-addressed `Attachments/v1` files, tombstone-aware file GC, `type:image` search. Capture not yet wired.
 - Reproducible local/CI scripts and open-source contribution files.
 
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main

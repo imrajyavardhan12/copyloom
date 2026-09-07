@@ -3,6 +3,7 @@ import Foundation
 public enum ClipKind: Int, Equatable, Sendable {
   case text = 0
   case link = 1
+  case image = 2
 }
 
 public enum ClipSourceProvenance: Int, Equatable, Sendable {
@@ -86,5 +87,62 @@ public struct ClipSummary: Equatable, Identifiable, Sendable {
     self.isPinned = isPinned
     self.isFavorite = isFavorite
     self.source = source
+  }
+}
+
+/// An accepted image snapshot. `data` holds the canonical bytes that will be
+/// content-addressed into the attachment store; `uti` records the kept flavor
+/// (`public.png`, `public.tiff` or `public.jpeg`).
+public struct AcceptedImageClip: Equatable, Sendable {
+  public let id: UUID
+  public let data: Data
+  public let uti: String
+  public let width: Int
+  public let height: Int
+  public let capturedAt: Date
+  public let source: ClipSource?
+
+  public init(
+    id: UUID,
+    data: Data,
+    uti: String,
+    width: Int,
+    height: Int,
+    capturedAt: Date,
+    source: ClipSource? = nil
+  ) {
+    self.id = id
+    self.data = data
+    self.uti = uti
+    self.width = width
+    self.height = height
+    self.capturedAt = capturedAt
+    self.source = source
+  }
+}
+
+/// File-level metadata for a stored image attachment.
+public struct ClipAttachment: Equatable, Sendable {
+  public let sha256: Data
+  public let uti: String
+  public let byteCount: Int
+  public let width: Int
+  public let height: Int
+  public let relativePath: String
+
+  public init(
+    sha256: Data,
+    uti: String,
+    byteCount: Int,
+    width: Int,
+    height: Int,
+    relativePath: String
+  ) {
+    self.sha256 = sha256
+    self.uti = uti
+    self.byteCount = byteCount
+    self.width = width
+    self.height = height
+    self.relativePath = relativePath
   }
 }

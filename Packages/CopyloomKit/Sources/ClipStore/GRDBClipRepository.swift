@@ -5,6 +5,9 @@ import GRDB
 
 public enum ClipStoreError: Error, Equatable, Sendable {
   case emptyText
+  case emptyAttachment
+  case unsupportedAttachmentType(String)
+  case invalidImageDimensions
   case invalidLimit(Int)
   case unsupportedFilter(SearchFilter)
   case corruptClipIdentifier(String)
@@ -20,6 +23,7 @@ struct GRDBClipRepository: ClipRepository, Sendable {
   private static let textUTI = "public.utf8-plain-text"
 
   let pool: DatabasePool
+  let attachments: AttachmentStore
 
   func saveAcceptedText(_ clip: AcceptedTextClip) async throws -> ClipSummary {
     guard !clip.text.isEmpty else { throw ClipStoreError.emptyText }
@@ -151,6 +155,173 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     }
   }
 
+  func saveAcceptedImage(_ clip: AcceptedImageClip) async throws -> ClipSummary {
+    guard !clip.data.isEmpty else { throw ClipStoreError.emptyAttachment }
+    guard AttachmentStore.supportedUTIs.contains(clip.uti.lowercased()) else {
+      throw ClipStoreError.unsupportedAttachmentType(clip.uti)
+    }
+    guard clip.width > 0, clip.height > 0 else {
+      throw ClipStoreError.invalidImageDimensions
+    }
+
+    // File first: a crash before the DB commit leaves an orphan file, which
+    // the startup reconciler reclaims. The reverse order would leave a
+    // database row pointing at bytes that do not exist.
+    let stored = try attachments.store(data: clip.data, uti: clip.uti)
+    let dedupeHash = ImageHasher.dedupeHash(data: clip.data, uti: clip.uti)
+    let capturedAt = clip.capturedAt.millisecondsSince1970
+    let byteCount = clip.data.count
+
+    return try await pool.write { database in
+      let attachmentID = try Self.upsertAttachment(
+        digest: stored.sha256,
+        uti: clip.uti.lowercased(),
+        byteCount: byteCount,
+        width: clip.width,
+        height: clip.height,
+        relativePath: stored.relativePath,
+        capturedAt: capturedAt,
+        database: database
+      )
+      let applicationID = try Self.upsertApplication(
+        clip.source,
+        capturedAt: capturedAt,
+        database: database
+      )
+      let provenance = clip.source?.provenance ?? .unknown
+
+      let clipRowID = try Int64.fetchOne(
+        database,
+        sql: """
+          INSERT INTO clips (
+              uuid, kind, hash_version, dedupe_hash, representation_set_hash,
+              byte_count, created_at, last_seen_at, copy_count,
+              latest_application_id, latest_source_provenance
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+          ON CONFLICT(hash_version, dedupe_hash) WHERE deleted_at IS NULL
+          DO UPDATE SET
+              last_seen_at = excluded.last_seen_at,
+              copy_count = clips.copy_count + 1,
+              latest_application_id = excluded.latest_application_id,
+              latest_source_provenance = excluded.latest_source_provenance
+          RETURNING id
+          """,
+        arguments: [
+          clip.id.uuidString.lowercased(),
+          ClipKind.image.rawValue,
+          TextHashes.version,
+          dedupeHash,
+          stored.sha256,
+          byteCount,
+          capturedAt,
+          capturedAt,
+          applicationID,
+          provenance.rawValue,
+        ]
+      )
+      guard let clipRowID else { throw ClipStoreError.missingSavedClip }
+
+      try database.execute(
+        sql: """
+          INSERT OR IGNORE INTO clip_representations (
+              clip_id, item_index, uti, inline_text, byte_count, sha256,
+              attachment_id, created_at
+          ) VALUES (?, 0, ?, '', ?, ?, ?, ?)
+          """,
+        arguments: [
+          clipRowID,
+          clip.uti.lowercased(),
+          byteCount,
+          stored.sha256,
+          attachmentID,
+          capturedAt,
+        ]
+      )
+
+      if let applicationID {
+        try database.execute(
+          sql: """
+            INSERT INTO clip_application_sources (
+                clip_id, application_id, provenance,
+                first_seen_at, last_seen_at, copy_count
+            ) VALUES (?, ?, ?, ?, ?, 1)
+            ON CONFLICT(clip_id, application_id, provenance) DO UPDATE SET
+                last_seen_at = excluded.last_seen_at,
+                copy_count = clip_application_sources.copy_count + 1
+            """,
+          arguments: [
+            clipRowID,
+            applicationID,
+            provenance.rawValue,
+            capturedAt,
+            capturedAt,
+          ]
+        )
+      }
+
+      let applicationSearchText =
+        try String.fetchOne(
+          database,
+          sql: """
+            SELECT group_concat(label, ' ')
+            FROM (
+                SELECT a.display_name || ' ' || a.bundle_id AS label
+                FROM clip_application_sources source
+                JOIN applications a ON a.id = source.application_id
+                WHERE source.clip_id = ?
+                ORDER BY a.bundle_id
+            )
+            """,
+          arguments: [clipRowID]
+        ) ?? ""
+
+      try database.execute(
+        sql: """
+          INSERT INTO search_documents (clip_id, body, updated_at, applications)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(clip_id) DO UPDATE SET
+              body = excluded.body,
+              updated_at = excluded.updated_at,
+              applications = excluded.applications
+          """,
+        arguments: [clipRowID, "", capturedAt, applicationSearchText]
+      )
+
+      return try Self.fetchSummary(clipRowID: clipRowID, database: database)
+    }
+  }
+
+  func attachment(for id: UUID) async throws -> ClipAttachment? {
+    try await pool.read { database in
+      guard
+        let row = try Row.fetchOne(
+          database,
+          sql: """
+            SELECT a.sha256, a.uti, a.byte_count, a.width, a.height,
+                   a.relative_path
+            FROM clips c
+            JOIN clip_representations r
+              ON r.clip_id = c.id AND r.item_index = 0
+              AND r.attachment_id IS NOT NULL
+            JOIN attachments a ON a.id = r.attachment_id
+            WHERE c.uuid = ? AND c.deleted_at IS NULL
+            """,
+          arguments: [id.uuidString.lowercased()]
+        )
+      else {
+        return nil
+      }
+      return ClipAttachment(
+        sha256: row["sha256"],
+        uti: row["uti"],
+        byteCount: row["byte_count"],
+        width: row["width"],
+        height: row["height"],
+        relativePath: row["relative_path"]
+      )
+    }
+  }
+
   func count() async throws -> Int {
     try await pool.read { database in
       try Int.fetchOne(
@@ -240,11 +411,11 @@ struct GRDBClipRepository: ClipRepository, Sendable {
   @discardableResult
   func purgeDeleted(before cutoff: Date) async throws -> Int {
     let cutoffMilliseconds = cutoff.millisecondsSince1970
-    return try await pool.write { database in
-      // Newly expired tombstones carry deleted_at == now, which is newer than
-      // the retention cutoff, so they survive this run and are hard-purged on
-      // a later run once the tombstone itself ages out. Total disk stays
-      // bounded to roughly two retention windows with no extra setting.
+    // Newly expired tombstones carry deleted_at == now, which is newer than
+    // the retention cutoff, so they survive this run and are hard-purged on
+    // a later run once the tombstone itself ages out. Total disk stays
+    // bounded to roughly two retention windows with no extra setting.
+    let (purgedClips, orphanPaths): (Int, [String]) = try await pool.write { database in
       try database.execute(
         sql: """
           DELETE FROM clips
@@ -253,8 +424,33 @@ struct GRDBClipRepository: ClipRepository, Sendable {
           """,
         arguments: [cutoffMilliseconds]
       )
-      return database.changesCount
+      let purgedClips = database.changesCount
+      let orphanPaths = try String.fetchAll(
+        database,
+        sql: """
+          SELECT relative_path FROM attachments
+          WHERE id NOT IN (
+            SELECT attachment_id FROM clip_representations
+            WHERE attachment_id IS NOT NULL
+          )
+          """
+      )
+      if !orphanPaths.isEmpty {
+        try database.execute(
+          sql: """
+            DELETE FROM attachments
+            WHERE id NOT IN (
+              SELECT attachment_id FROM clip_representations
+              WHERE attachment_id IS NOT NULL
+            )
+            """
+        )
+      }
+      return (purgedClips, orphanPaths)
     }
+    // Best-effort: a crash here leaves files the startup reconciler reclaims.
+    attachments.remove(relativePaths: orphanPaths)
+    return purgedClips
   }
 
   func recent(limit: Int) async throws -> [ClipSummary] {
@@ -271,7 +467,10 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     let pattern = query.text.map(Self.ftsClause).joined(separator: " AND ")
 
     return try await pool.read { database in
-      var arguments: StatementArguments = [Self.textUTI]
+      // Note: the representation join intentionally ignores UTI. Every clip
+      // currently keeps exactly one item-0 representation; image rows carry
+      // their bytes in the attachment store with '' inline text.
+      var arguments: StatementArguments = []
       var predicates = ["c.deleted_at IS NULL"]
 
       if hasTextQuery {
@@ -302,6 +501,9 @@ struct GRDBClipRepository: ClipRepository, Sendable {
         case .contentType(.link):
           predicates.append("c.kind = ?")
           arguments += [ClipKind.link.rawValue]
+        case .contentType(.image):
+          predicates.append("c.kind = ?")
+          arguments += [ClipKind.image.rawValue]
         case .pinned:
           predicates.append("c.is_pinned = 1")
         case .favorite:
@@ -337,7 +539,7 @@ struct GRDBClipRepository: ClipRepository, Sendable {
                  latest_app.display_name AS source_application_name
           FROM \(fromClause)
           JOIN clip_representations r
-            ON r.clip_id = c.id AND r.item_index = 0 AND r.uti = ?
+            ON r.clip_id = c.id AND r.item_index = 0
           LEFT JOIN applications latest_app ON latest_app.id = c.latest_application_id
           WHERE \(predicates.joined(separator: " AND "))
           ORDER BY \(orderClause)
@@ -353,6 +555,39 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     guard (1...Self.maximumPageSize).contains(limit) else {
       throw ClipStoreError.invalidLimit(limit)
     }
+  }
+
+  private static func upsertAttachment(
+    digest: Data,
+    uti: String,
+    byteCount: Int,
+    width: Int,
+    height: Int,
+    relativePath: String,
+    capturedAt: Int64,
+    database: Database
+  ) throws -> Int64 {
+    try database.execute(
+      sql: """
+        INSERT INTO attachments (
+            sha256, uti, byte_count, width, height, relative_path, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(sha256) DO NOTHING
+        """,
+      arguments: [digest, uti, byteCount, width, height, relativePath, capturedAt]
+    )
+    // First writer wins on dimensions; identical bytes with conflicting
+    // dimensions can only come from a misbehaving caller.
+    guard
+      let attachmentID = try Int64.fetchOne(
+        database,
+        sql: "SELECT id FROM attachments WHERE sha256 = ?",
+        arguments: [digest]
+      )
+    else {
+      throw ClipStoreError.missingStoredRepresentation
+    }
+    return attachmentID
   }
 
   private static func upsertApplication(
@@ -419,11 +654,11 @@ struct GRDBClipRepository: ClipRepository, Sendable {
                  latest_app.display_name AS source_application_name
           FROM clips c
           JOIN clip_representations r
-            ON r.clip_id = c.id AND r.item_index = 0 AND r.uti = ?
+            ON r.clip_id = c.id AND r.item_index = 0
           LEFT JOIN applications latest_app ON latest_app.id = c.latest_application_id
           WHERE c.id = ?
           """,
-        arguments: [Self.textUTI, clipRowID]
+        arguments: [clipRowID]
       )
     else {
       throw ClipStoreError.missingSavedClip

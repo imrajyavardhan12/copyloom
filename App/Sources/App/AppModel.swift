@@ -402,6 +402,7 @@ extension ClipKind {
     switch self {
     case .text: "text"
     case .link: "link"
+    case .image: "image"
     }
   }
 }

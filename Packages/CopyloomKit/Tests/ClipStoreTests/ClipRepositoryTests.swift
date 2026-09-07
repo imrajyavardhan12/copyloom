@@ -257,6 +257,164 @@ struct ClipRepositoryTests {
     #expect(secondRun == 0)
   }
 
+  @Test("persists an image clip with attachment metadata")
+  func persistsImageClip() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let png = try #require(
+      Data(
+        base64Encoded:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      )
+    )
+    let clipID = UUID()
+    let saved = try await database.repository.saveAcceptedImage(
+      AcceptedImageClip(
+        id: clipID,
+        data: png,
+        uti: "public.png",
+        width: 1,
+        height: 1,
+        capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
+        source: ClipSource(
+          bundleIdentifier: "com.apple.Preview",
+          applicationName: "Preview",
+          provenance: .frontmostApplication
+        )
+      )
+    )
+
+    #expect(saved.id == clipID)
+    #expect(saved.kind == .image)
+    #expect(saved.copyCount == 1)
+
+    let attachment = try #require(await database.repository.attachment(for: clipID))
+    #expect(attachment.uti == "public.png")
+    #expect(attachment.byteCount == png.count)
+    #expect(attachment.width == 1)
+    #expect(attachment.height == 1)
+    #expect(
+      FileManager.default.fileExists(
+        atPath: database.attachments.url(for: attachment.relativePath).path))
+    #expect(try await database.repository.attachment(for: UUID()) == nil)
+
+    let images = try await database.repository.search(
+      SearchQuery(text: [], filters: [.contentType(.image)]),
+      limit: 20
+    )
+    #expect(images.map(\.id) == [clipID])
+    let texts = try await database.repository.search(
+      SearchQuery(text: [], filters: [.contentType(.text)]),
+      limit: 20
+    )
+    #expect(texts.isEmpty)
+    #expect(try await database.health().fts5IntegrityCheckPassed)
+  }
+
+  @Test("deduplicates identical image bytes")
+  func deduplicatesImages() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01])
+    let firstID = UUID()
+    _ = try await database.repository.saveAcceptedImage(
+      AcceptedImageClip(
+        id: firstID, data: png, uti: "public.png", width: 4, height: 4,
+        capturedAt: Date(timeIntervalSince1970: 1_700_000_000))
+    )
+    let duplicate = try await database.repository.saveAcceptedImage(
+      AcceptedImageClip(
+        id: UUID(), data: png, uti: "public.png", width: 4, height: 4,
+        capturedAt: Date(timeIntervalSince1970: 1_700_000_100))
+    )
+
+    #expect(duplicate.id == firstID)
+    #expect(duplicate.copyCount == 2)
+    #expect(try await database.repository.count() == 1)
+    let attachment = try #require(await database.repository.attachment(for: firstID))
+    let duplicateAttachment = try #require(
+      await database.repository.attachment(for: duplicate.id))
+    #expect(attachment == duplicateAttachment)
+  }
+
+  @Test("rejects invalid image clips before touching storage")
+  func rejectsInvalidImages() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let png = Data([0x01, 0x02])
+
+    await #expect(throws: ClipStoreError.emptyAttachment) {
+      try await database.repository.saveAcceptedImage(
+        AcceptedImageClip(
+          id: UUID(), data: Data(), uti: "public.png", width: 1, height: 1,
+          capturedAt: .now)
+      )
+    }
+    await #expect(throws: ClipStoreError.unsupportedAttachmentType("com.example.weird")) {
+      try await database.repository.saveAcceptedImage(
+        AcceptedImageClip(
+          id: UUID(), data: png, uti: "com.example.weird", width: 1, height: 1,
+          capturedAt: .now)
+      )
+    }
+    await #expect(throws: ClipStoreError.invalidImageDimensions) {
+      try await database.repository.saveAcceptedImage(
+        AcceptedImageClip(
+          id: UUID(), data: png, uti: "public.png", width: 0, height: 1,
+          capturedAt: .now)
+      )
+    }
+    #expect(try await database.repository.count() == 0)
+  }
+
+  @Test("expiry keeps the tombstone file until purge reclaims it")
+  func imageExpiryThenPurge() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let png = Data([0x89, 0x50, 0x4E, 0x47])
+    let clipID = UUID()
+    let oldDate = Date(timeIntervalSince1970: 1_700_000_000)
+    let cutoff = oldDate.addingTimeInterval(30 * 24 * 3_600)
+    _ = try await database.repository.saveAcceptedImage(
+      AcceptedImageClip(
+        id: clipID, data: png, uti: "public.png", width: 2, height: 2,
+        capturedAt: oldDate)
+    )
+    let attachment = try #require(await database.repository.attachment(for: clipID))
+    let filePath = database.attachments.url(for: attachment.relativePath).path
+
+    #expect(try await database.repository.deleteExpired(before: cutoff) == 1)
+    // Tombstone grace: bytes stay until the deletion itself ages out.
+    #expect(FileManager.default.fileExists(atPath: filePath))
+    #expect(try await database.repository.attachment(for: clipID) == nil)
+
+    #expect(
+      try await database.repository.purgeDeleted(
+        before: cutoff.addingTimeInterval(3_600)) == 1)
+    #expect(!FileManager.default.fileExists(atPath: filePath))
+    #expect(try await database.health().fts5IntegrityCheckPassed)
+  }
+
   @Test("purges aged tombstones while keeping recent deletions and live clips")
   func purgesAgedTombstones() async throws {
     let directory = FileManager.default.temporaryDirectory

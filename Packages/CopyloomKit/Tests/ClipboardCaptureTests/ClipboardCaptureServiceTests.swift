@@ -259,6 +259,22 @@ private actor RepositorySpy: ClipRepository {
     )
   }
 
+  func saveAcceptedImage(_ clip: AcceptedImageClip) async throws -> ClipSummary {
+    ClipSummary(
+      id: clip.id,
+      kind: .image,
+      text: "",
+      createdAt: clip.capturedAt,
+      lastSeenAt: clip.capturedAt,
+      copyCount: 1,
+      isPinned: false,
+      isFavorite: false,
+      source: clip.source
+    )
+  }
+
+  func attachment(for id: UUID) async throws -> ClipAttachment? { nil }
+
   func count() async throws -> Int {
     clips.count
   }

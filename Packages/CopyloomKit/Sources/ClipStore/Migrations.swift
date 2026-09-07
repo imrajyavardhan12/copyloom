@@ -150,6 +150,25 @@ enum Migrations {
               ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0 CHECK (use_count >= 0);
           """)
     }
+
+    migrator.registerMigration("004_image_attachments") { database in
+      try database.execute(
+        sql: """
+          CREATE TABLE attachments (
+              id INTEGER PRIMARY KEY,
+              sha256 BLOB NOT NULL UNIQUE,
+              uti TEXT NOT NULL,
+              byte_count INTEGER NOT NULL CHECK (byte_count > 0),
+              width INTEGER NOT NULL CHECK (width > 0),
+              height INTEGER NOT NULL CHECK (height > 0),
+              relative_path TEXT NOT NULL UNIQUE,
+              created_at INTEGER NOT NULL
+          );
+
+          ALTER TABLE clip_representations
+              ADD COLUMN attachment_id INTEGER REFERENCES attachments(id) ON DELETE CASCADE;
+          """)
+    }
     return migrator
   }
 }
