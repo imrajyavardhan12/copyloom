@@ -52,6 +52,17 @@ public final class NSPasteboardReader: PasteboardReading {
     pasteboard.string(forType: .string)
   }
 
+  public func readImageData() -> (data: Data, uti: String)? {
+    for uti in PasteboardTypeIdentifier.imageTypesInPreferenceOrder {
+      if let data = pasteboard.data(forType: NSPasteboard.PasteboardType(uti)),
+        !data.isEmpty
+      {
+        return (data, uti)
+      }
+    }
+    return nil
+  }
+
   private var accessState: PasteboardAccessState {
     guard #available(macOS 15.4, *) else { return .allowed }
     switch pasteboard.accessBehavior {

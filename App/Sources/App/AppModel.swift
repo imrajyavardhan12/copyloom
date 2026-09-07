@@ -354,13 +354,16 @@ final class AppModel {
       lastEventText = "Protected clipboard content was not saved."
     case .skipped(.sensitiveContent):
       lastEventText = "Sensitive content was not saved."
+    case .skipped(.preflightTimeout):
+      lastEventText = "An image was not saved during safety screening."
     case .skipped(.ignoredApplication):
       lastEventText = "A copy from an ignored application was not saved."
     case .skipped(.tooLarge):
       lastEventText = "Clipboard text exceeded the safety limit and was not saved."
     case .skipped(.ignoredNextCopy):
       lastEventText = "Clipboard change ignored."
-    case .skipped(.emptyText), .skipped(.unsupportedType), .skipped(.ownWrite),
+    case .skipped(.emptyText), .skipped(.emptyImage), .skipped(.unsupportedType),
+      .skipped(.ownWrite),
       .skipped(.inconsistentSnapshot):
       break
     case .skipped(.disabled), .skipped(.paused):

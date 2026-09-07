@@ -220,6 +220,212 @@ struct ClipboardCaptureServiceTests {
 
     #expect(await repository.savedClips().map(\.text) == ["second"])
   }
+
+  @Test("captures an image through the privacy gate")
+  func capturesImage() async throws {
+    let pasteboard = FakePasteboard()
+    let repository = RepositorySpy()
+    let gate = StubPreflight(.allow(width: 4, height: 4))
+    let clipID = UUID()
+    let capturedAt = Date(timeIntervalSince1970: 1_700_000_000)
+    let service = ClipboardCaptureService(
+      pasteboard: pasteboard,
+      repository: repository,
+      configuration: .init(isEnabled: true),
+      imagePreflight: gate,
+      now: { capturedAt },
+      makeUUID: { clipID }
+    )
+    pasteboard.metadataValue = PasteboardMetadata(
+      changeCount: 1,
+      typeIdentifiers: [PasteboardTypeIdentifier.tiff],
+      declaredSourceBundleIdentifier: "com.apple.Preview",
+      frontmostApplication: ClipSource(
+        bundleIdentifier: "com.example.WrongForegroundApp",
+        applicationName: "Wrong Foreground App",
+        provenance: .frontmostApplication
+      )
+    )
+    pasteboard.changeCount = 1
+    pasteboard.image = (Data([0x49, 0x49, 0x2A]), PasteboardTypeIdentifier.tiff)
+
+    let outcome = await service.pollOnce()
+    let saved = await repository.savedImages()
+
+    guard case .captured(let summary) = outcome else {
+      Issue.record("Expected a captured result, received \(outcome)")
+      return
+    }
+    #expect(summary.id == clipID)
+    #expect(summary.kind == .image)
+    #expect(saved.count == 1)
+    #expect(saved.first?.uti == PasteboardTypeIdentifier.tiff)
+    #expect(saved.first?.width == 4)
+    #expect(saved.first?.source?.bundleIdentifier == "com.apple.Preview")
+    #expect(pasteboard.readCount == 0)
+    #expect(pasteboard.imageReadCount == 1)
+    #expect(await gate.callCount() == 1)
+  }
+
+  @Test("prefers text when a snapshot declares both text and image")
+  func prefersTextOnMixedSnapshots() async throws {
+    let pasteboard = FakePasteboard()
+    let repository = RepositorySpy()
+    let gate = StubPreflight(.allow(width: 4, height: 4))
+    let service = ClipboardCaptureService(
+      pasteboard: pasteboard,
+      repository: repository,
+      configuration: .init(isEnabled: true),
+      imagePreflight: gate
+    )
+    pasteboard.metadataValue = PasteboardMetadata(
+      changeCount: 1,
+      typeIdentifiers: [
+        PasteboardTypeIdentifier.plainText, PasteboardTypeIdentifier.png,
+      ]
+    )
+    pasteboard.changeCount = 1
+    pasteboard.text = "https://example.com/image.png"
+    pasteboard.image = (Data([0x89, 0x50]), PasteboardTypeIdentifier.png)
+
+    guard case .captured(let summary) = await service.pollOnce() else {
+      Issue.record("Expected the text flavor to win")
+      return
+    }
+    #expect(summary.kind == .link)
+    #expect(pasteboard.imageReadCount == 0)
+    #expect(await gate.callCount() == 0)
+    #expect(await repository.savedImages().isEmpty)
+  }
+
+  @Test("refuses images while the Vision gate is unavailable")
+  func refusesImagesByDefault() async throws {
+    let pasteboard = FakePasteboard()
+    let repository = RepositorySpy()
+    let service = ClipboardCaptureService(
+      pasteboard: pasteboard,
+      repository: repository,
+      configuration: .init(isEnabled: true)
+    )
+    pasteboard.metadataValue = PasteboardMetadata(
+      changeCount: 1,
+      typeIdentifiers: [PasteboardTypeIdentifier.png]
+    )
+    pasteboard.changeCount = 1
+    pasteboard.image = (Data([0x89, 0x50]), PasteboardTypeIdentifier.png)
+
+    #expect(await service.pollOnce() == .skipped(.preflightTimeout))
+    #expect(await repository.savedImages().isEmpty)
+    #expect(await repository.savedClips().isEmpty)
+  }
+
+  @Test("drops denied images without persistence")
+  func deniesImageAtGate() async throws {
+    let pasteboard = FakePasteboard()
+    let repository = RepositorySpy()
+    let gate = StubPreflight(.deny(.sensitiveContent))
+    let service = ClipboardCaptureService(
+      pasteboard: pasteboard,
+      repository: repository,
+      configuration: .init(isEnabled: true),
+      imagePreflight: gate
+    )
+    pasteboard.metadataValue = PasteboardMetadata(
+      changeCount: 1,
+      typeIdentifiers: [PasteboardTypeIdentifier.png]
+    )
+    pasteboard.changeCount = 1
+    pasteboard.image = (Data([0x89, 0x50]), PasteboardTypeIdentifier.png)
+
+    #expect(await service.pollOnce() == .skipped(.sensitiveContent))
+    #expect(await repository.savedImages().isEmpty)
+  }
+
+  @Test("rejects oversize images before consulting the gate")
+  func rejectsOversizeImage() async throws {
+    let pasteboard = FakePasteboard()
+    let repository = RepositorySpy()
+    let gate = StubPreflight(.allow(width: 1, height: 1))
+    let service = ClipboardCaptureService(
+      pasteboard: pasteboard,
+      repository: repository,
+      configuration: .init(isEnabled: true, maximumImageBytes: 2),
+      imagePreflight: gate
+    )
+    pasteboard.metadataValue = PasteboardMetadata(
+      changeCount: 1,
+      typeIdentifiers: [PasteboardTypeIdentifier.png]
+    )
+    pasteboard.changeCount = 1
+    pasteboard.image = (Data([0x01, 0x02, 0x03]), PasteboardTypeIdentifier.png)
+
+    #expect(await service.pollOnce() == .skipped(.tooLarge))
+    #expect(await gate.callCount() == 0)
+    #expect(await repository.savedImages().isEmpty)
+  }
+
+  @Test("rejects images beyond the pixel cap")
+  func rejectsOversizePixels() async throws {
+    let pasteboard = FakePasteboard()
+    let repository = RepositorySpy()
+    let gate = StubPreflight(.allow(width: 100_000, height: 100_000))
+    let service = ClipboardCaptureService(
+      pasteboard: pasteboard,
+      repository: repository,
+      configuration: .init(isEnabled: true),
+      imagePreflight: gate
+    )
+    pasteboard.metadataValue = PasteboardMetadata(
+      changeCount: 1,
+      typeIdentifiers: [PasteboardTypeIdentifier.png]
+    )
+    pasteboard.changeCount = 1
+    pasteboard.image = (Data([0x89, 0x50]), PasteboardTypeIdentifier.png)
+
+    #expect(await service.pollOnce() == .skipped(.tooLarge))
+    #expect(await repository.savedImages().isEmpty)
+  }
+
+  @Test("times out a stalled privacy gate")
+  func timesOutSlowGate() async throws {
+    let pasteboard = FakePasteboard()
+    let repository = RepositorySpy()
+    let gate = StubPreflight(.hang)
+    let service = ClipboardCaptureService(
+      pasteboard: pasteboard,
+      repository: repository,
+      configuration: .init(isEnabled: true, imagePreflightTimeoutSeconds: 0.05),
+      imagePreflight: gate
+    )
+    pasteboard.metadataValue = PasteboardMetadata(
+      changeCount: 1,
+      typeIdentifiers: [PasteboardTypeIdentifier.png]
+    )
+    pasteboard.changeCount = 1
+    pasteboard.image = (Data([0x89, 0x50]), PasteboardTypeIdentifier.png)
+
+    #expect(await service.pollOnce() == .skipped(.preflightTimeout))
+    #expect(await repository.savedImages().isEmpty)
+  }
+
+  @Test("reports missing image payloads without storage")
+  func reportsEmptyImage() async throws {
+    let pasteboard = FakePasteboard()
+    let repository = RepositorySpy()
+    let service = ClipboardCaptureService(
+      pasteboard: pasteboard,
+      repository: repository,
+      configuration: .init(isEnabled: true)
+    )
+    pasteboard.metadataValue = PasteboardMetadata(
+      changeCount: 1,
+      typeIdentifiers: [PasteboardTypeIdentifier.png]
+    )
+    pasteboard.changeCount = 1
+    pasteboard.image = nil
+
+    #expect(await service.pollOnce() == .skipped(.emptyImage))
+  }
 }
 
 @MainActor
@@ -227,8 +433,10 @@ private final class FakePasteboard: PasteboardReading {
   var changeCount = 0
   var metadataValue = PasteboardMetadata(changeCount: 0, typeIdentifiers: [])
   var text: String?
+  var image: (data: Data, uti: String)?
   var onMetadata: (() -> Void)?
   private(set) var readCount = 0
+  private(set) var imageReadCount = 0
 
   func metadata() -> PasteboardMetadata {
     onMetadata?()
@@ -239,10 +447,46 @@ private final class FakePasteboard: PasteboardReading {
     readCount += 1
     return text
   }
+
+  func readImageData() -> (data: Data, uti: String)? {
+    imageReadCount += 1
+    return image
+  }
+}
+
+private actor StubPreflight: ImagePrivacyPreflight {
+  enum Behavior {
+    case allow(width: Int, height: Int)
+    case deny(CaptureSkipReason)
+    case hang
+  }
+
+  let behavior: Behavior
+  private var calls = 0
+
+  init(_ behavior: Behavior) {
+    self.behavior = behavior
+  }
+
+  func inspect(data: Data, uti: String) async -> ImagePreflightVerdict {
+    calls += 1
+    switch behavior {
+    case .allow(let width, let height):
+      return .allow(width: width, height: height)
+    case .deny(let reason):
+      return .skip(reason)
+    case .hang:
+      try? await Task.sleep(nanoseconds: 5_000_000_000)
+      return .allow(width: 1, height: 1)
+    }
+  }
+
+  func callCount() -> Int { calls }
 }
 
 private actor RepositorySpy: ClipRepository {
   private var clips: [AcceptedTextClip] = []
+  private var images: [AcceptedImageClip] = []
 
   func saveAcceptedText(_ clip: AcceptedTextClip) async throws -> ClipSummary {
     clips.append(clip)
@@ -260,7 +504,8 @@ private actor RepositorySpy: ClipRepository {
   }
 
   func saveAcceptedImage(_ clip: AcceptedImageClip) async throws -> ClipSummary {
-    ClipSummary(
+    images.append(clip)
+    return ClipSummary(
       id: clip.id,
       kind: .image,
       text: "",
@@ -303,5 +548,9 @@ private actor RepositorySpy: ClipRepository {
 
   func savedClips() -> [AcceptedTextClip] {
     clips
+  }
+
+  func savedImages() -> [AcceptedImageClip] {
+    images
   }
 }

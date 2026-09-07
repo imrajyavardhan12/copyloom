@@ -66,4 +66,6 @@ private final class IntegrationPasteboard: PasteboardReading {
   func readPlainText() -> String? {
     text
   }
+
+  func readImageData() -> (data: Data, uti: String)? { nil }
 }

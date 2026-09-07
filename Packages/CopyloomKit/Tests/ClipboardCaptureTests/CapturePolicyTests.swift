@@ -1,3 +1,4 @@
+import ClipDomain
 import Testing
 
 @testable import ClipboardCapture
@@ -40,5 +41,78 @@ struct CapturePolicyTests {
     )
 
     #expect(decision == .skip(.accessDenied))
+  }
+
+  @Test("routes image-only snapshots to the image path")
+  func routesImageSnapshots() {
+    let decision = CapturePolicy().preflight(
+      metadata: PasteboardMetadata(
+        changeCount: 1,
+        typeIdentifiers: [PasteboardTypeIdentifier.tiff]
+      ),
+      configuration: CaptureConfiguration(isEnabled: true)
+    )
+
+    #expect(decision == .allowImage(nil))
+  }
+
+  @Test("prefers text on mixed text-and-image snapshots")
+  func prefersTextOnMixedSnapshots() {
+    let decision = CapturePolicy().preflight(
+      metadata: PasteboardMetadata(
+        changeCount: 1,
+        typeIdentifiers: [
+          PasteboardTypeIdentifier.plainText, PasteboardTypeIdentifier.png,
+        ]
+      ),
+      configuration: CaptureConfiguration(isEnabled: true)
+    )
+
+    #expect(decision == .allowText(nil))
+  }
+
+  @Test("rejects unknown image flavors")
+  func rejectsUnknownFlavors() {
+    let decision = CapturePolicy().preflight(
+      metadata: PasteboardMetadata(
+        changeCount: 1,
+        typeIdentifiers: ["com.compuserve.gif"]
+      ),
+      configuration: CaptureConfiguration(isEnabled: true)
+    )
+
+    #expect(decision == .skip(.unsupportedType))
+  }
+
+  @Test("applies marker and ignore rules to image snapshots")
+  func guardsImageSnapshots() {
+    let policy = CapturePolicy()
+    let concealed = policy.preflight(
+      metadata: PasteboardMetadata(
+        changeCount: 1,
+        typeIdentifiers: [
+          PasteboardTypeIdentifier.concealed, PasteboardTypeIdentifier.png,
+        ]
+      ),
+      configuration: CaptureConfiguration(isEnabled: true)
+    )
+    #expect(concealed == .skip(.concealed))
+
+    let ignored = policy.preflight(
+      metadata: PasteboardMetadata(
+        changeCount: 1,
+        typeIdentifiers: [PasteboardTypeIdentifier.png],
+        frontmostApplication: ClipSource(
+          bundleIdentifier: "com.1password.1password",
+          applicationName: "1Password",
+          provenance: .frontmostApplication
+        )
+      ),
+      configuration: CaptureConfiguration(
+        isEnabled: true,
+        ignoredBundleIdentifiers: ["com.1password.1password"]
+      )
+    )
+    #expect(ignored == .skip(.ignoredApplication))
   }
 }

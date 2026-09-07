@@ -6,17 +6,26 @@ public struct CaptureConfiguration: Equatable, Sendable {
   public var isPaused: Bool
   public var ignoredBundleIdentifiers: Set<String>
   public var maximumTextBytes: Int
+  public var maximumImageBytes: Int
+  public var maximumImagePixels: Int
+  public var imagePreflightTimeoutSeconds: Double
 
   public init(
     isEnabled: Bool = false,
     isPaused: Bool = false,
     ignoredBundleIdentifiers: Set<String> = [],
-    maximumTextBytes: Int = 5 * 1_024 * 1_024
+    maximumTextBytes: Int = 5 * 1_024 * 1_024,
+    maximumImageBytes: Int = 25 * 1_024 * 1_024,
+    maximumImagePixels: Int = 40_000_000,
+    imagePreflightTimeoutSeconds: Double = 10
   ) {
     self.isEnabled = isEnabled
     self.isPaused = isPaused
     self.ignoredBundleIdentifiers = Set(ignoredBundleIdentifiers.map { $0.lowercased() })
     self.maximumTextBytes = maximumTextBytes
+    self.maximumImageBytes = maximumImageBytes
+    self.maximumImagePixels = maximumImagePixels
+    self.imagePreflightTimeoutSeconds = imagePreflightTimeoutSeconds
   }
 }
 
@@ -33,12 +42,15 @@ public enum CaptureSkipReason: Equatable, Sendable {
   case ignoredApplication
   case unsupportedType
   case emptyText
+  case emptyImage
   case tooLarge
   case sensitiveContent
+  case preflightTimeout
 }
 
 public enum CapturePreflightDecision: Equatable, Sendable {
-  case allow(ClipSource?)
+  case allowText(ClipSource?)
+  case allowImage(ClipSource?)
   case skip(CaptureSkipReason)
 }
 
@@ -76,10 +88,16 @@ public struct CapturePolicy: Sendable {
     }
 
     let source = metadata.resolvedSource
-    guard types.contains(PasteboardTypeIdentifier.plainText) else {
-      return .skip(.unsupportedType)
+    // Text wins on mixed snapshots: an image carrying a text flavor (e.g. a
+    // copied image URL) is more useful and more searchable as text, and this
+    // preserves the long-standing behavior for every existing producer.
+    if types.contains(PasteboardTypeIdentifier.plainText) {
+      return .allowText(source)
     }
-    return .allow(source)
+    if !types.isDisjoint(with: PasteboardTypeIdentifier.imageTypes) {
+      return .allowImage(source)
+    }
+    return .skip(.unsupportedType)
   }
 
   public func classifyText(_ text: String) -> ClipKind {
