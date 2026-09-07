@@ -74,6 +74,11 @@ struct CopyloomApp: App {
 
       Divider()
 
+      SettingsLink {
+        Text("Settings…")
+      }
+      .keyboardShortcut(",")
+
       Button("Quit Copyloom") {
         model.shutdown()
         NSApplication.shared.terminate(nil)
@@ -84,5 +89,9 @@ struct CopyloomApp: App {
         .accessibilityLabel("Copyloom")
     }
     .menuBarExtraStyle(.menu)
+
+    Settings {
+      SettingsView(model: model)
+    }
   }
 }

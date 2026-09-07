@@ -16,6 +16,7 @@ final class AppModel {
   private(set) var lastEventText: String?
   private(set) var retentionDays: Int = CaptureSettings.defaultRetentionDays
   private(set) var ignoredAppCount = 0
+  private(set) var ignoredBundleIdentifiers: [String] = []
 
   @ObservationIgnored private let settingsStore: CaptureSettingsStore
   @ObservationIgnored private var settings: CaptureSettings
@@ -32,6 +33,7 @@ final class AppModel {
     settings = loaded.settings
     retentionDays = loaded.settings.retentionDays
     ignoredAppCount = loaded.settings.ignoredBundleIdentifiers.count
+    ignoredBundleIdentifiers = loaded.settings.ignoredBundleIdentifiers.sorted()
 
     let initialCaptureEnabled = loaded.settings.captureEnabled
     let initialCapturePaused = initialCaptureEnabled && loaded.settings.capturePaused
@@ -156,6 +158,78 @@ final class AppModel {
     lastEventText = "The next clipboard change will be ignored."
   }
 
+  // MARK: - Privacy settings (M2.6)
+
+  func addIgnoredBundleID(_ bundleID: String) {
+    let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard !trimmed.isEmpty else { return }
+    settings.ignoredBundleIdentifiers.insert(trimmed)
+    settings = settings.normalized()
+    persistSettings()
+    applyConfiguration()
+    lastEventText = "Copies from \(trimmed) will not be saved."
+  }
+
+  func removeIgnoredBundleID(_ bundleID: String) {
+    settings.ignoredBundleIdentifiers.remove(bundleID.lowercased())
+    // Never allow an empty exclusion set to persist silently; restore defaults
+    // if the user removes everything so password managers stay excluded.
+    if settings.ignoredBundleIdentifiers.isEmpty {
+      settings.ignoredBundleIdentifiers = CaptureSettings.defaultIgnoredBundleIdentifiers
+      lastEventText = "Ignore list was empty; restored safe defaults."
+    }
+    settings = settings.normalized()
+    persistSettings()
+    applyConfiguration()
+  }
+
+  func resetIgnoredToDefaults() {
+    settings.ignoredBundleIdentifiers = CaptureSettings.defaultIgnoredBundleIdentifiers
+    settings = settings.normalized()
+    persistSettings()
+    applyConfiguration()
+    lastEventText = "Ignored applications reset to safe defaults."
+  }
+
+  func updateRetentionDays(_ days: Int) {
+    settings.retentionDays = days
+    settings = settings.normalized()
+    persistSettings()
+  }
+
+  func refreshPermissionStatus() {
+    automaticPasteEnabled = quickPasteController?.hasPostEventAccess ?? false
+  }
+
+  func openAccessibilitySettings() {
+    refreshPermissionStatus()
+    if let url = URL(
+      string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+    ) {
+      NSWorkspace.shared.open(url)
+    }
+  }
+
+  struct RunningAppCandidate: Identifiable, Hashable {
+    let bundleIdentifier: String
+    let displayName: String
+    var id: String { bundleIdentifier }
+  }
+
+  func runningAppCandidates() -> [RunningAppCandidate] {
+    let ownBundleID = Bundle.main.bundleIdentifier?.lowercased()
+    let ignored = Set(settings.ignoredBundleIdentifiers.map { $0.lowercased() })
+    return NSWorkspace.shared.runningApplications.compactMap { app in
+      guard let bundleID = app.bundleIdentifier?.lowercased(), !bundleID.isEmpty else {
+        return nil
+      }
+      guard bundleID != ownBundleID, !ignored.contains(bundleID) else { return nil }
+      let name = app.localizedName ?? bundleID
+      return RunningAppCandidate(bundleIdentifier: bundleID, displayName: name)
+    }
+    .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+  }
+
   /// Deletes clips older than the retention window. Pinned/favorite exempt.
   func deleteExpiredNow() {
     guard let repository = database?.repository else { return }
@@ -225,6 +299,7 @@ final class AppModel {
     settingsStore.save(settings)
     retentionDays = settings.retentionDays
     ignoredAppCount = settings.ignoredBundleIdentifiers.count
+    ignoredBundleIdentifiers = settings.ignoredBundleIdentifiers.sorted()
   }
 
   private func applyConfiguration() {
