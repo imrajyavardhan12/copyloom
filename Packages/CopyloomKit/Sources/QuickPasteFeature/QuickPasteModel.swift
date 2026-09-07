@@ -1,6 +1,8 @@
+import AppKit
 import ClipDomain
 import ClipSearch
 import Foundation
+import ImageIO
 import Observation
 
 public enum ClipDeliveryMode: Equatable, Sendable {
@@ -30,6 +32,7 @@ public final class QuickPasteModel {
   @ObservationIgnored private let calendar: Calendar
   @ObservationIgnored private let onDismiss: @MainActor () -> Void
   @ObservationIgnored private var requestGeneration = 0
+  @ObservationIgnored private let thumbnails = NSCache<NSUUID, NSImage>()
 
   public init(
     repository: any ClipRepository,
@@ -134,6 +137,7 @@ public final class QuickPasteModel {
     guard let selectedClip else { return }
     do {
       try await repository.delete(id: selectedClip.id, at: now())
+      thumbnails.removeObject(forKey: selectedClip.id as NSUUID)
       guard let currentIndex = items.firstIndex(where: { $0.id == selectedClip.id }) else {
         return
       }
@@ -143,6 +147,38 @@ public final class QuickPasteModel {
     } catch {
       errorMessage = "Unable to delete the clip"
     }
+  }
+
+  /// Lazily loads a downscaled thumbnail for image clips, backed by an
+  /// `NSCache` that the system empties under memory pressure. Full-size
+  /// bytes are never decoded into the list: the thumbnail caps at 256 px.
+  /// Non-image clips and missing files yield nil.
+  public func loadThumbnail(for clip: ClipSummary) async -> NSImage? {
+    guard clip.kind == .image else { return nil }
+    let key = clip.id as NSUUID
+    if let cached = thumbnails.object(forKey: key) { return cached }
+    guard let data = try? await repository.attachmentData(for: clip.id),
+      let thumbnail = Self.makeThumbnail(from: data)
+    else {
+      return nil
+    }
+    thumbnails.setObject(thumbnail, forKey: key)
+    return thumbnail
+  }
+
+  private static func makeThumbnail(from data: Data) -> NSImage? {
+    let options: CFDictionary =
+      [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceThumbnailMaxPixelSize: 256,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+      ] as CFDictionary
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+      let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options)
+    else {
+      return nil
+    }
+    return NSImage(cgImage: thumbnail, size: .zero)
   }
 
   private func replaceItems(

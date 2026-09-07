@@ -11,6 +11,7 @@ final class PasteCoordinator: ClipDelivering {
   private let copier: PasteboardClipCopier
   private let onBeforePaste: @MainActor () -> Void
   private let onStatus: StatusHandler
+  private let imageLoader: @MainActor (UUID) async -> (data: Data, uti: String)?
   // Keep a strong reference for the lifetime of the panel. NSWorkspace may
   // return a short-lived wrapper that disappears if retained weakly.
   private var targetApplication: NSRunningApplication?
@@ -18,11 +19,13 @@ final class PasteCoordinator: ClipDelivering {
   init(
     copier: PasteboardClipCopier = PasteboardClipCopier(),
     onBeforePaste: @escaping @MainActor () -> Void,
-    onStatus: @escaping StatusHandler
+    onStatus: @escaping StatusHandler,
+    imageLoader: @escaping @MainActor (UUID) async -> (data: Data, uti: String)? = { _ in nil }
   ) {
     self.copier = copier
     self.onBeforePaste = onBeforePaste
     self.onStatus = onStatus
+    self.imageLoader = imageLoader
   }
 
   var hasPostEventAccess: Bool {
@@ -40,7 +43,17 @@ final class PasteCoordinator: ClipDelivering {
   func deliver(_ clip: ClipSummary, mode: ClipDeliveryMode) async throws {
     let preparedTarget = targetApplication
     defer { targetApplication = nil }
-    try copier.copy(clip, plainText: mode == .plainText)
+    if clip.kind == .image {
+      // Plain-text mode has no distinct meaning for images; both deliver bytes.
+      guard let image = await imageLoader(clip.id) else {
+        onStatus("Copied; the image file is no longer available.")
+        return
+      }
+      try copier.copyImage(
+        image.data, uti: image.uti, sourceBundleID: clip.source?.bundleIdentifier)
+    } else {
+      try copier.copy(clip, plainText: mode == .plainText)
+    }
 
     guard mode != .copyOnly else {
       onStatus("Copied to the clipboard.")

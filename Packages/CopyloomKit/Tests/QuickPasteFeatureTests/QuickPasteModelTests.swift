@@ -91,6 +91,42 @@ struct QuickPasteModelTests {
     #expect(model.selectedIndex == 0)
   }
 
+  @Test("loads thumbnails for image clips only")
+  func loadsThumbnails() async throws {
+    let png = try #require(
+      Data(
+        base64Encoded:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      )
+    )
+    let image = imageFixture(id: UUID())
+    let text = fixture("plain words")
+    let missing = imageFixture(id: UUID())
+    let repository = QuickPasteRepositorySpy(
+      clips: [image, text, missing], imageData: [image.id: png])
+    let model = QuickPasteModel(repository: repository, delivery: QuickPasteDeliverySpy())
+
+    #expect(await model.loadThumbnail(for: image) != nil)
+    // Cached second load does not consult the repository again.
+    #expect(await model.loadThumbnail(for: image) != nil)
+    #expect(await model.loadThumbnail(for: text) == nil)
+    #expect(await model.loadThumbnail(for: missing) == nil)
+  }
+
+  private func imageFixture(id: UUID) -> ClipSummary {
+    ClipSummary(
+      id: id,
+      kind: .image,
+      text: "",
+      createdAt: .now,
+      lastSeenAt: .now,
+      copyCount: 1,
+      isPinned: false,
+      isFavorite: false,
+      source: nil
+    )
+  }
+
   private func fixture(_ text: String) -> ClipSummary {
     ClipSummary(
       id: UUID(),
@@ -130,14 +166,20 @@ private actor QuickPasteRepositorySpy: ClipRepository {
 
   private var clips: [ClipSummary]
   private let searchResults: [ClipSummary]
+  private let imageData: [UUID: Data]
   private var searchQuery: SearchQuery?
   private var use: Use?
   private var pin: Pin?
   private var deleted: UUID?
 
-  init(clips: [ClipSummary], searchResults: [ClipSummary] = []) {
+  init(
+    clips: [ClipSummary],
+    searchResults: [ClipSummary] = [],
+    imageData: [UUID: Data] = [:]
+  ) {
     self.clips = clips
     self.searchResults = searchResults
+    self.imageData = imageData
   }
 
   func saveAcceptedText(_ clip: AcceptedTextClip) async throws -> ClipSummary {
@@ -149,6 +191,8 @@ private actor QuickPasteRepositorySpy: ClipRepository {
   }
 
   func attachment(for id: UUID) async throws -> ClipAttachment? { nil }
+
+  func attachmentData(for id: UUID) async throws -> Data? { imageData[id] }
 
   func count() async throws -> Int { clips.count }
 

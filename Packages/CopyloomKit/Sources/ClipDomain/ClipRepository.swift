@@ -10,6 +10,11 @@ public protocol ClipRepository: Sendable {
   /// File metadata for an image clip's attachment, if present.
   func attachment(for id: UUID) async throws -> ClipAttachment?
 
+  /// Raw bytes for an image clip's attachment, or nil when the clip has no
+  /// attachment or its file is gone. Nil never throws: callers degrade to a
+  /// graceful status message instead of failing delivery.
+  func attachmentData(for id: UUID) async throws -> Data?
+
   func count() async throws -> Int
 
   func setPinned(id: UUID, isPinned: Bool) async throws

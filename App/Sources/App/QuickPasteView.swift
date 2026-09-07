@@ -1,3 +1,4 @@
+import AppKit
 import ClipDomain
 import QuickPasteFeature
 import SwiftUI
@@ -94,6 +95,7 @@ struct QuickPasteView: View {
           LazyVStack(spacing: 5) {
             ForEach(Array(model.items.enumerated()), id: \.element.id) { index, clip in
               QuickPasteRow(
+                model: model,
                 clip: clip,
                 index: index,
                 isSelected: model.selectedIndex == index
@@ -144,23 +146,28 @@ struct QuickPasteView: View {
 }
 
 private struct QuickPasteRow: View {
+  let model: QuickPasteModel
   let clip: ClipSummary
   let index: Int
   let isSelected: Bool
 
   var body: some View {
     HStack(spacing: 12) {
-      Image(systemName: clip.kind == .link ? "link" : "text.alignleft")
-        .font(.system(size: 15, weight: .semibold))
-        .foregroundStyle(isSelected ? Color.white : Color.accentColor)
-        .frame(width: 28, height: 28)
-        .background(
-          (isSelected ? Color.white.opacity(0.18) : Color.accentColor.opacity(0.12)),
-          in: RoundedRectangle(cornerRadius: 7)
-        )
+      if clip.kind == .image {
+        ClipThumbnail(model: model, clip: clip, isSelected: isSelected)
+      } else {
+        Image(systemName: clip.kind == .link ? "link" : "text.alignleft")
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(isSelected ? Color.white : Color.accentColor)
+          .frame(width: 28, height: 28)
+          .background(
+            (isSelected ? Color.white.opacity(0.18) : Color.accentColor.opacity(0.12)),
+            in: RoundedRectangle(cornerRadius: 7)
+          )
+      }
 
       VStack(alignment: .leading, spacing: 4) {
-        Text(clip.text.replacingOccurrences(of: "\n", with: " "))
+        Text(rowTitle)
           .font(.system(size: 14, weight: .medium))
           .lineLimit(2)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -201,8 +208,47 @@ private struct QuickPasteRow: View {
     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
   }
 
+  private var rowTitle: String {
+    if clip.kind == .image { return "Image" }
+    return clip.text.replacingOccurrences(of: "\n", with: " ")
+  }
+
   private var accessibilityLabel: String {
     let source = clip.source?.applicationName ?? clip.source?.bundleIdentifier ?? "unknown app"
+    if clip.kind == .image { return "Image from \(source)" }
     return "\(clip.kind == .link ? "Link" : "Text") from \(source): \(clip.text)"
+  }
+}
+
+/// Lazily loaded image thumbnail. The `.task` starts on appearance and
+/// cancels on disappearance, so off-screen rows never decode bytes.
+private struct ClipThumbnail: View {
+  let model: QuickPasteModel
+  let clip: ClipSummary
+  let isSelected: Bool
+
+  @State private var image: NSImage?
+
+  var body: some View {
+    Group {
+      if let image {
+        Image(nsImage: image)
+          .resizable()
+          .scaledToFill()
+      } else {
+        Image(systemName: "photo")
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(isSelected ? Color.white : Color.accentColor)
+      }
+    }
+    .frame(width: 28, height: 28)
+    .background(
+      (isSelected ? Color.white.opacity(0.18) : Color.accentColor.opacity(0.12)),
+      in: RoundedRectangle(cornerRadius: 7)
+    )
+    .clipShape(RoundedRectangle(cornerRadius: 7))
+    .task {
+      image = await model.loadThumbnail(for: clip)
+    }
   }
 }

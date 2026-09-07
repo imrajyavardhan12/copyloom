@@ -113,6 +113,15 @@ public struct VisionImagePreflight: ImagePrivacyPreflight, Sendable {
     guard detector.inspect(observations.joined(separator: "\n")) == .safe else {
       return .skip(.sensitiveContent)
     }
+    // OCR mangles dash runs ("•---BEGIN", "----BEGIN…-...." seen live),
+    // so the exact-match PEM pattern in the text detector never fires on
+    // screenshots. This OCR-specific pre-check tolerates dash/whitespace
+    // mangling around the header. It runs only on OCR output — the text
+    // path keeps its exact patterns — and refusing header-bearing images is
+    // consistent: the text path refuses the same headers.
+    guard !Self.looksLikePEMHeader(observations.joined(separator: "\n")) else {
+      return .skip(.sensitiveContent)
+    }
     return .allow(width: dimensions.width, height: dimensions.height)
   }
 
@@ -133,4 +142,17 @@ public struct VisionImagePreflight: ImagePrivacyPreflight, Sendable {
     }
     return CGImageSourceCreateImageAtIndex(source, 0, nil)
   }
+
+  private static func looksLikePEMHeader(_ text: String) -> Bool {
+    pemHeaderPattern.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text))
+      != nil
+  }
+
+  private static let pemHeaderPattern: NSRegularExpression = {
+    // Hardcoded valid pattern; compiled once at first use.
+    try! NSRegularExpression(
+      pattern: #"-{2,}\s*BEGIN\s+(?:(?:RSA|OPENSSH|DSA|EC)\s+)?PRIVATE\s+KEY"#,
+      options: [.caseInsensitive]
+    )
+  }()
 }

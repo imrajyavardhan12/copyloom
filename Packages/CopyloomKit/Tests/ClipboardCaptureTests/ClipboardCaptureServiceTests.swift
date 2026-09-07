@@ -520,6 +520,8 @@ private actor RepositorySpy: ClipRepository {
 
   func attachment(for id: UUID) async throws -> ClipAttachment? { nil }
 
+  func attachmentData(for id: UUID) async throws -> Data? { nil }
+
   func count() async throws -> Int {
     clips.count
   }

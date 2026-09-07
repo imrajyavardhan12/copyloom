@@ -30,6 +30,8 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Image attachment storage foundation: migration 004, content-addressed `Attachments/v1` files, tombstone-aware file GC, `type:image` search. Capture not yet wired.
 - Image capture path with stubbed fail-closed privacy gate: pasteboard flavor gate (text wins on mixed snapshots), byte/pixel ceilings, preflight timeout race, 12 new policy/service tests. Vision OCR gate stays slice 3; the default gate refuses all images.
 - Vision privacy gate: dimensions-only decode, in-memory OCR with accurate recognition and language correction off, existing sensitive detector over OCR text, once-guarded Vision continuation, 6 new gate tests including live-Vision blank-image plumbing.
+- Image capture activation: Vision gate wired into the service, Quick Paste lazy thumbnails, image paste-back with loop-suppression markers, startup orphan reconciliation. A03 manual evidence pending.
+- OCR-tolerant PEM refusal: live screenshots mangle dash runs past exact patterns, so the gate adds an OCR-only tolerant header check; prose about keys still passes. Evidence in `docs/validation/m2-images.md`.
 - Reproducible local/CI scripts and open-source contribution files.
 
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main

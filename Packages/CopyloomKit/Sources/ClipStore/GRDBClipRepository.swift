@@ -322,6 +322,11 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     }
   }
 
+  func attachmentData(for id: UUID) async throws -> Data? {
+    guard let meta = try await attachment(for: id) else { return nil }
+    return try? attachments.data(at: meta.relativePath)
+  }
+
   func count() async throws -> Int {
     try await pool.read { database in
       try Int.fetchOne(

@@ -84,4 +84,20 @@ public final class AppDatabase: Sendable {
   public func close() throws {
     try pool.close()
   }
+
+  /// Removes attachment files with no referencing representation that are
+  /// older than the grace period. Covers crashes between the purge commit
+  /// and post-commit unlinking. Returns the number of removed files.
+  @discardableResult
+  public func reconcileAttachments(
+    gracePeriod: TimeInterval = 24 * 3_600,
+    now: Date = Date()
+  ) async throws -> Int {
+    let known = try await pool.read { database in
+      Set(
+        try String.fetchAll(database, sql: "SELECT relative_path FROM attachments"))
+    }
+    return try attachments.reconcile(
+      knownPaths: known, olderThan: now.addingTimeInterval(-gracePeriod))
+  }
 }

@@ -36,6 +36,28 @@ struct VisionImagePreflightTests {
     #expect(verdict == .skip(.sensitiveContent))
   }
 
+  @Test("refuses OCR-mangled PEM headers that exact patterns miss")
+  func refusesMangledPEMHeaders() async {
+    // Live OCR observations for the same on-screen header. The text
+    // detector's exact five-dash pattern matches neither.
+    for mangled in ["•---BEGIN PRIVATE KEY...", "----BEGIN PRIVATE KEY-...."] {
+      let preflight = VisionImagePreflight(recognizer: StubRecognizer(.strings([mangled])))
+      #expect(
+        await preflight.inspect(data: Self.blankPNG, uti: "public.png")
+          == .skip(.sensitiveContent))
+    }
+  }
+
+  @Test("allows prose that merely mentions private keys")
+  func allowsKeyProse() async {
+    let preflight = VisionImagePreflight(
+      recognizer: StubRecognizer(.strings(["how do private keys work?"])))
+
+    let verdict = await preflight.inspect(data: Self.blankPNG, uti: "public.png")
+
+    #expect(verdict == .allow(width: 1, height: 1))
+  }
+
   @Test("refuses undecodable bytes without consulting OCR")
   func refusesUndecodableData() async {
     let recognizer = StubRecognizer(.strings(["hello"]))

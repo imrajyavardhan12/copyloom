@@ -125,6 +125,8 @@ them, per ADR-0002's minimal-migration rule.
    slice 4's end-to-end pass.)
 4. **UX + acceptance**: Quick Paste thumbnails, image paste-back,
    retention-file GC wiring, A03 matrix, `docs/validation/m2-images.md`.
+   (Landed with signed-host evidence; Spaces/full-screen paste matrix shared
+   with the text workflow stays open.)
 
 ## Consequences
 

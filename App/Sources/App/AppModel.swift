@@ -57,7 +57,10 @@ final class AppModel {
       let service = ClipboardCaptureService(
         pasteboard: NSPasteboardReader(),
         repository: database.repository,
-        configuration: captureConfiguration()
+        configuration: captureConfiguration(),
+        // Slice 4 activates real image capture: the Vision gate from slice 3
+        // replaces the disabled default. Images now persist after screening.
+        imagePreflight: VisionImagePreflight()
       )
       captureService = service
       monitor = PasteboardPollingMonitor(service: service) { [weak self] outcome in
@@ -326,6 +329,8 @@ final class AppModel {
         let cutoff = Date().addingTimeInterval(TimeInterval(-days * 24 * 3_600))
         let expired = try await self.database?.repository.deleteExpired(before: cutoff) ?? 0
         _ = try await self.database?.repository.purgeDeleted(before: cutoff)
+        // Reclaim crash-orphaned attachment files on every launch-cycle pass.
+        _ = try await self.database?.reconcileAttachments()
         guard !Task.isCancelled else { return }
         if expired > 0 {
           self.refreshClipCount()

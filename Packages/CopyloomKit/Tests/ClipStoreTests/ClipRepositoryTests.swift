@@ -415,6 +415,53 @@ struct ClipRepositoryTests {
     #expect(try await database.health().fts5IntegrityCheckPassed)
   }
 
+  @Test("reads back attachment bytes and reports missing files as nil")
+  func readsAttachmentData() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let png = Data([0x89, 0x50, 0x4E, 0x47])
+    let clipID = UUID()
+    _ = try await database.repository.saveAcceptedImage(
+      AcceptedImageClip(
+        id: clipID, data: png, uti: "public.png", width: 2, height: 2,
+        capturedAt: .now)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: UUID(), text: "plain words", capturedAt: .now)
+    )
+
+    #expect(try await database.repository.attachmentData(for: clipID) == png)
+    #expect(try await database.repository.attachmentData(for: UUID()) == nil)
+  }
+
+  @Test("reconciles crash-orphaned attachment files")
+  func reconcilesOrphanedFiles() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let orphanURL = database.attachments.url(for: "zz/zz/orphan.png")
+    try FileManager.default.createDirectory(
+      at: orphanURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("orphan".utf8).write(to: orphanURL)
+    try FileManager.default.setAttributes(
+      [.modificationDate: Date(timeIntervalSince1970: 1_600_000_000)],
+      ofItemAtPath: orphanURL.path
+    )
+
+    #expect(try await database.reconcileAttachments(now: Date()) == 1)
+    #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
+    #expect(try await database.reconcileAttachments(now: Date()) == 0)
+  }
+
   @Test("purges aged tombstones while keeping recent deletions and live clips")
   func purgesAgedTombstones() async throws {
     let directory = FileManager.default.temporaryDirectory

@@ -23,7 +23,15 @@ final class QuickPastePanelController {
     self.panel = panel
     let pasteCoordinator = PasteCoordinator(
       onBeforePaste: { [weak panel] in panel?.orderOut(nil) },
-      onStatus: onDeliveryStatus
+      onStatus: onDeliveryStatus,
+      imageLoader: { [repository] id in
+        guard let meta = try? await repository.attachment(for: id),
+          let data = try? await repository.attachmentData(for: id)
+        else {
+          return nil
+        }
+        return (data, meta.uti)
+      }
     )
     self.pasteCoordinator = pasteCoordinator
     model = QuickPasteModel(
