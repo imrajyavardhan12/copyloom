@@ -195,6 +195,8 @@ final class AppModel {
     settings.retentionDays = days
     settings = settings.normalized()
     persistSettings()
+    // Lowering the window should purge immediately, not on next launch.
+    runRetentionCleanup()
   }
 
   func refreshPermissionStatus() {
@@ -231,6 +233,8 @@ final class AppModel {
   }
 
   /// Deletes clips older than the retention window. Pinned/favorite exempt.
+  /// Tombstones older than the window are hard-purged in the same pass so
+  /// disk stays bounded to roughly two retention windows.
   func deleteExpiredNow() {
     guard let repository = database?.repository else { return }
     let days = settings.retentionDays
@@ -238,11 +242,18 @@ final class AppModel {
       do {
         let cutoff = Date().addingTimeInterval(TimeInterval(-days * 24 * 3_600))
         let expired = try await repository.deleteExpired(before: cutoff)
+        let purged = try await repository.purgeDeleted(before: cutoff)
         guard !Task.isCancelled else { return }
         self?.refreshClipCount()
         if expired > 0 {
           let noun = expired == 1 ? "clip" : "clips"
-          self?.lastEventText = "Deleted \(expired) expired \(noun) older than \(days) days."
+          var message = "Deleted \(expired) expired \(noun) older than \(days) days."
+          if purged > 0 {
+            message += " Purged \(purged) old deletions."
+          }
+          self?.lastEventText = message
+        } else if purged > 0 {
+          self?.lastEventText = "Purged \(purged) old deletions."
         } else {
           self?.lastEventText = "No clips older than \(days) days."
         }
@@ -314,6 +325,7 @@ final class AppModel {
       do {
         let cutoff = Date().addingTimeInterval(TimeInterval(-days * 24 * 3_600))
         let expired = try await self.database?.repository.deleteExpired(before: cutoff) ?? 0
+        _ = try await self.database?.repository.purgeDeleted(before: cutoff)
         guard !Task.isCancelled else { return }
         if expired > 0 {
           self.refreshClipCount()

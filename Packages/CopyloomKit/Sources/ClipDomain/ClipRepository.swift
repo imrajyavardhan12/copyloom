@@ -15,9 +15,17 @@ public protocol ClipRepository: Sendable {
   func delete(id: UUID, at date: Date) async throws
 
   /// Soft-deletes unpinned/unfavorited clips with `lastSeenAt` before `cutoff`.
-  /// Returns the number of clips newly expired. Idempotent.
+  /// Returns the number of clips newly expired. Idempotent. Expired rows are
+  /// kept as tombstones (see `purgeDeleted`) so a later sync design has
+  /// deletion markers; retention counts from when each clip was last copied.
   @discardableResult
   func deleteExpired(before cutoff: Date) async throws -> Int
+
+  /// Hard-deletes tombstoned rows (`deletedAt` before `cutoff`) and, through
+  /// `ON DELETE CASCADE`, their representations, source links and search
+  /// documents. Bounds database disk use; returns purged row count.
+  @discardableResult
+  func purgeDeleted(before cutoff: Date) async throws -> Int
 
   func recent(limit: Int) async throws -> [ClipSummary]
 

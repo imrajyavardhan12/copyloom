@@ -269,6 +269,8 @@ private actor RepositorySpy: ClipRepository {
 
   func deleteExpired(before cutoff: Date) async throws -> Int { 0 }
 
+  func purgeDeleted(before cutoff: Date) async throws -> Int { 0 }
+
   func recordUse(id: UUID, at date: Date) async throws {}
 
   func delete(id: UUID, at date: Date) async throws {

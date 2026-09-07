@@ -237,6 +237,26 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     }
   }
 
+  @discardableResult
+  func purgeDeleted(before cutoff: Date) async throws -> Int {
+    let cutoffMilliseconds = cutoff.millisecondsSince1970
+    return try await pool.write { database in
+      // Newly expired tombstones carry deleted_at == now, which is newer than
+      // the retention cutoff, so they survive this run and are hard-purged on
+      // a later run once the tombstone itself ages out. Total disk stays
+      // bounded to roughly two retention windows with no extra setting.
+      try database.execute(
+        sql: """
+          DELETE FROM clips
+          WHERE deleted_at IS NOT NULL
+            AND deleted_at < ?
+          """,
+        arguments: [cutoffMilliseconds]
+      )
+      return database.changesCount
+    }
+  }
+
   func recent(limit: Int) async throws -> [ClipSummary] {
     try await fetch(query: SearchQuery(text: [], filters: []), limit: limit)
   }

@@ -154,6 +154,8 @@ private actor QuickPasteRepositorySpy: ClipRepository {
 
   func deleteExpired(before cutoff: Date) async throws -> Int { 0 }
 
+  func purgeDeleted(before cutoff: Date) async throws -> Int { 0 }
+
   func recordUse(id: UUID, at date: Date) async throws {
     use = Use(id: id, date: date)
   }

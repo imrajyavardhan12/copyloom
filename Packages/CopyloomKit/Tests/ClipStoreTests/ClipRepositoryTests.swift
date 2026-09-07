@@ -244,9 +244,61 @@ struct ClipRepositoryTests {
       limit: 20
     )
     #expect(expiredSearch.isEmpty)
+    // Survivors must stay fully searchable: the broad tombstone cleanup in
+    // deleteExpired must not claim live rows' search documents.
+    let survivorSearch = try await database.repository.search(
+      SearchQuery(text: [.term("pinned")], filters: []),
+      limit: 20
+    )
+    #expect(survivorSearch.map(\.id) == [pinnedID])
     #expect(try await database.health().fts5IntegrityCheckPassed)
 
     let secondRun = try await database.repository.deleteExpired(before: cutoff)
     #expect(secondRun == 0)
+  }
+
+  @Test("purges aged tombstones while keeping recent deletions and live clips")
+  func purgesAgedTombstones() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let base = Date(timeIntervalSince1970: 1_700_000_000)
+    let oldDelete = base.addingTimeInterval(100)
+    let cutoff = base.addingTimeInterval(150)
+    let emergLive = base.addingTimeInterval(250)
+
+    let agedID = UUID()
+    let freshID = UUID()
+    let liveID = UUID()
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: agedID, text: "aged tombstone clip", capturedAt: base)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: freshID, text: "fresh tombstone clip", capturedAt: base)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: liveID, text: "live survivor clip", capturedAt: emergLive)
+    )
+    try await database.repository.delete(id: agedID, at: oldDelete)
+    // Fresh tombstone deleted after the cutoff: grace period must protect it.
+    try await database.repository.delete(id: freshID, at: cutoff.addingTimeInterval(100))
+
+    #expect(try await database.repository.purgeDeleted(before: cutoff) == 1)
+    #expect(try await database.repository.purgeDeleted(before: cutoff) == 0)
+    #expect(
+      try await database.repository.purgeDeleted(before: emergLive.addingTimeInterval(60)) == 1)
+
+    let remaining = try await database.repository.recent(limit: 20)
+    #expect(remaining.map(\.id) == [liveID])
+    let liveSearch = try await database.repository.search(
+      SearchQuery(text: [.term("survivor")], filters: []),
+      limit: 20
+    )
+    #expect(liveSearch.map(\.id) == [liveID])
+    #expect(try await database.health().fts5IntegrityCheckPassed)
   }
 }

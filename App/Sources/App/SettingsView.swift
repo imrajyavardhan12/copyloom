@@ -109,9 +109,11 @@ struct SettingsView: View {
           ),
           in: 1...365
         )
-        Text("Pinned and favorite clips are never auto-deleted.")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+        Text(
+          "Pinned and favorite clips are never auto-deleted. Counts from when each clip was last copied."
+        )
+        .font(.callout)
+        .foregroundStyle(.secondary)
       }
 
       Divider()
