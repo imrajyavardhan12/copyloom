@@ -24,6 +24,9 @@ struct LibraryModelTests {
     #expect(queries[2].filters == [.pinned])
     #expect(queries[3].filters == [.contentType(.image)])
     #expect(queries[4].filters == [.contentType(.link)])
+    #expect(queries[5].filters == [.contentType(.file)])
+    #expect(queries[6].filters == [.contentType(.code)])
+    #expect(queries[7].filters == [.contentType(.color)])
   }
 
   @Test("search combines section filters with parsed input")

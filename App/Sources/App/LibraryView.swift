@@ -184,18 +184,14 @@ private struct LibraryRow: View {
 
   var body: some View {
     HStack(spacing: 10) {
-      if clip.kind == .image {
-        ClipThumbnail(
-          load: { await model.loadThumbnail(for: clip) },
-          isSelected: model.selectedID == clip.id
-        )
-      } else {
-        Image(systemName: clip.kind == .link ? "link" : "text.alignleft")
-          .foregroundStyle(.secondary)
-          .frame(width: 24, height: 24)
-      }
+      KindBadge(
+        clip: clip,
+        loadThumbnail: { await model.loadThumbnail(for: clip) },
+        isSelected: model.selectedID == clip.id
+      )
       VStack(alignment: .leading, spacing: 2) {
         Text(clip.kind == .image ? "Image" : String(clip.text.prefix(120)))
+          .font(.system(.body, design: clip.kind == .code ? .monospaced : .default))
           .lineLimit(2)
         HStack(spacing: 6) {
           if let source = clip.source?.applicationName ?? clip.source?.bundleIdentifier {
@@ -235,9 +231,14 @@ private struct LibraryCard: View {
           isSelected: model.selectedID == clip.id
         )
         .frame(maxWidth: .infinity)
+      } else if clip.kind == .color, let swatch = Color(hex: clip.text) {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .fill(swatch)
+          .frame(height: 64)
+          .frame(maxWidth: .infinity)
       } else {
         Text(String(clip.text.prefix(200)))
-          .font(.body)
+          .font(.system(.body, design: clip.kind == .code ? .monospaced : .default))
           .lineLimit(6, reservesSpace: true)
           .frame(maxWidth: .infinity, alignment: .leading)
       }
@@ -300,7 +301,14 @@ private struct InspectorView: View {
             )
             .frame(maxWidth: .infinity)
           } else {
+            if clip.kind == .color, let swatch = Color(hex: clip.text) {
+              RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(swatch)
+                .frame(height: 72)
+                .frame(maxWidth: .infinity)
+            }
             Text(clip.text)
+              .font(.system(.body, design: clip.kind == .code ? .monospaced : .default))
               .textSelection(.enabled)
               .frame(maxWidth: .infinity, alignment: .leading)
           }
@@ -309,6 +317,21 @@ private struct InspectorView: View {
             "Source",
             clip.source?.applicationName ?? clip.source?.bundleIdentifier ?? "Unknown")
           metadataRow("Copied", "\(clip.copyCount)×")
+          if clip.kind == .code {
+            metadataRow(
+              "Lines", "\(clip.text.components(separatedBy: "\n").count)")
+          }
+          if clip.kind == .file {
+            Button("Reveal in Finder") {
+              let url = URL(
+                fileURLWithPath: (clip.text as NSString).expandingTildeInPath)
+              NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+            .buttonStyle(.link)
+            .disabled(
+              !FileManager.default.fileExists(
+                atPath: (clip.text as NSString).expandingTildeInPath))
+          }
           metadataRow("First seen", clip.createdAt.formatted())
           metadataRow("Last seen", clip.lastSeenAt.formatted())
           Divider()
@@ -366,5 +389,81 @@ private struct InspectorView: View {
     } catch {
       copyError = true
     }
+  }
+}
+
+/// Kind icon shared by Library rows. Images resolve thumbnails; colors show
+/// a swatch when the value parses as hex (functional notations keep the
+/// palette icon until transforms own color conversion in slice 5).
+private struct KindBadge: View {
+  let clip: ClipSummary
+  let loadThumbnail: () async -> NSImage?
+  let isSelected: Bool
+
+  var body: some View {
+    Group {
+      switch clip.kind {
+      case .image:
+        ClipThumbnail(load: loadThumbnail, isSelected: isSelected)
+      case .code:
+        badge("chevron.left.forwardslash.chevron.right")
+      case .color:
+        if let swatch = Color(hex: clip.text) {
+          RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .fill(swatch)
+            .frame(width: 28, height: 28)
+        } else {
+          badge("paintpalette")
+        }
+      case .file:
+        badge("doc.fill")
+      case .link:
+        badge("link")
+      case .text:
+        badge("text.alignleft")
+      }
+    }
+    .frame(width: 28, height: 28)
+  }
+
+  private func badge(_ systemName: String) -> some View {
+    Image(systemName: systemName)
+      .foregroundStyle(isSelected ? Color.white : Color.accentColor)
+      .frame(width: 28, height: 28)
+      .background(
+        (isSelected ? Color.white.opacity(0.18) : Color.accentColor.opacity(0.12)),
+        in: RoundedRectangle(cornerRadius: 7)
+      )
+  }
+}
+
+extension Color {
+  /// Parses `#rgb`, `#rgba`, `#rrggbb` and `#rrggbbaa` (case-insensitive).
+  /// Functional notations are intentionally unsupported here.
+  init?(hex: String) {
+    var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard value.hasPrefix("#") else { return nil }
+    value.removeFirst()
+    guard [3, 4, 6, 8].contains(value.count),
+      value.allSatisfy(\.isHexDigit)
+    else {
+      return nil
+    }
+    if value.count <= 4 {
+      value = value.flatMap { [$0, $0] }.map(String.init).joined()
+    }
+    guard let rgb = UInt64(value.prefix(6), radix: 16) else { return nil }
+    let alpha: Double
+    if value.count == 8, let byte = UInt64(value.suffix(2), radix: 16) {
+      alpha = Double(byte) / 255
+    } else {
+      alpha = 1
+    }
+    self.init(
+      red: Double((rgb >> 16) & 0xFF) / 255,
+      green: Double((rgb >> 8) & 0xFF) / 255,
+      blue: Double(rgb & 0xFF) / 255,
+      opacity: alpha
+    )
   }
 }

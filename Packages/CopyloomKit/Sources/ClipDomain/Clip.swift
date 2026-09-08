@@ -4,6 +4,9 @@ public enum ClipKind: Int, Equatable, Sendable {
   case text = 0
   case link = 1
   case image = 2
+  case code = 3
+  case color = 4
+  case file = 5
 }
 
 public enum ClipSourceProvenance: Int, Equatable, Sendable {

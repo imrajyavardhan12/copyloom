@@ -534,6 +534,15 @@ struct GRDBClipRepository: ClipRepository, Sendable {
         case .contentType(.image):
           predicates.append("c.kind = ?")
           arguments += [ClipKind.image.rawValue]
+        case .contentType(.code):
+          predicates.append("c.kind = ?")
+          arguments += [ClipKind.code.rawValue]
+        case .contentType(.color):
+          predicates.append("c.kind = ?")
+          arguments += [ClipKind.color.rawValue]
+        case .contentType(.file):
+          predicates.append("c.kind = ?")
+          arguments += [ClipKind.file.rawValue]
         case .pinned:
           predicates.append("c.is_pinned = 1")
         case .favorite:

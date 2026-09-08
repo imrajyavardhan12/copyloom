@@ -426,6 +426,73 @@ struct ClipboardCaptureServiceTests {
 
     #expect(await service.pollOnce() == .skipped(.emptyImage))
   }
+
+  @Test("captures Finder file references as joined paths")
+  func capturesFileReferences() async throws {
+    let pasteboard = FakePasteboard()
+    let repository = RepositorySpy()
+    let service = ClipboardCaptureService(
+      pasteboard: pasteboard,
+      repository: repository,
+      configuration: .init(isEnabled: true)
+    )
+    pasteboard.metadataValue = PasteboardMetadata(
+      changeCount: 1,
+      typeIdentifiers: [
+        PasteboardTypeIdentifier.fileURL,
+        PasteboardTypeIdentifier.plainText,
+        PasteboardTypeIdentifier.tiff,
+      ],
+      declaredSourceBundleIdentifier: "com.apple.finder"
+    )
+    pasteboard.changeCount = 1
+    pasteboard.fileURLs = [
+      URL(fileURLWithPath: "/Users/rvs/report.pdf"),
+      URL(fileURLWithPath: "/Users/rvs/notes.txt"),
+    ]
+    pasteboard.text = "report.pdf"
+
+    let outcome = await service.pollOnce()
+    let saved = await repository.savedClips()
+
+    guard case .captured(let summary) = outcome else {
+      Issue.record("Expected a captured result, received \(outcome)")
+      return
+    }
+    #expect(summary.kind == .file)
+    #expect(saved.count == 1)
+    #expect(saved.first?.kind == .file)
+    #expect(saved.first?.text == "/Users/rvs/report.pdf\n/Users/rvs/notes.txt")
+    #expect(saved.first?.source?.bundleIdentifier == "com.apple.finder")
+    #expect(pasteboard.readCount == 0)
+  }
+
+  @Test("falls back to text when advertised file URLs are unreadable")
+  func fallsBackToTextWithoutURLs() async throws {
+    let pasteboard = FakePasteboard()
+    let repository = RepositorySpy()
+    let service = ClipboardCaptureService(
+      pasteboard: pasteboard,
+      repository: repository,
+      configuration: .init(isEnabled: true)
+    )
+    pasteboard.metadataValue = PasteboardMetadata(
+      changeCount: 1,
+      typeIdentifiers: [
+        PasteboardTypeIdentifier.fileURL, PasteboardTypeIdentifier.plainText,
+      ]
+    )
+    pasteboard.changeCount = 1
+    pasteboard.fileURLs = []
+    pasteboard.text = "fallback name"
+
+    guard case .captured(let summary) = await service.pollOnce() else {
+      Issue.record("Expected fallback text capture")
+      return
+    }
+    #expect(summary.kind == .text)
+    #expect(await repository.savedClips().map(\.text) == ["fallback name"])
+  }
 }
 
 @MainActor
@@ -451,6 +518,12 @@ private final class FakePasteboard: PasteboardReading {
   func readImageData() -> (data: Data, uti: String)? {
     imageReadCount += 1
     return image
+  }
+
+  var fileURLs: [URL] = []
+
+  func readFileURLs() -> [URL] {
+    fileURLs
   }
 }
 

@@ -14,6 +14,9 @@ public enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
   case pinned
   case images
   case links
+  case files
+  case code
+  case colors
 
   public var id: String { rawValue }
 
@@ -24,6 +27,9 @@ public enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
     case .pinned: "Pinned"
     case .images: "Images"
     case .links: "Links"
+    case .files: "Files"
+    case .code: "Code"
+    case .colors: "Colors"
     }
   }
 
@@ -34,6 +40,9 @@ public enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
     case .pinned: "pin"
     case .images: "photo"
     case .links: "link"
+    case .files: "folder"
+    case .code: "chevron.left.forwardslash.chevron.right"
+    case .colors: "swatchbook"
     }
   }
 
@@ -44,6 +53,9 @@ public enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
     case .pinned: [.pinned]
     case .images: [.contentType(.image)]
     case .links: [.contentType(.link)]
+    case .files: [.contentType(.file)]
+    case .code: [.contentType(.code)]
+    case .colors: [.contentType(.color)]
     }
   }
 }

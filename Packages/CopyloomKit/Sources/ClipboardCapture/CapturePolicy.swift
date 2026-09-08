@@ -52,6 +52,7 @@ public enum CaptureSkipReason: Equatable, Sendable {
 public enum CapturePreflightDecision: Equatable, Sendable {
   case allowText(ClipSource?)
   case allowImage(ClipSource?)
+  case allowFile(ClipSource?)
   case skip(CaptureSkipReason)
 }
 
@@ -89,6 +90,13 @@ public struct CapturePolicy: Sendable {
     }
 
     let source = metadata.resolvedSource
+    // File references win over everything below: Finder copies bundle the
+    // icon (tiff) plus a lossy name string alongside public.file-url, and
+    // the URL form is the lossless, reveal-able one. No bytes are copied —
+    // references only, per the no-silent-duplication rule.
+    if types.contains(PasteboardTypeIdentifier.fileURL) {
+      return .allowFile(source)
+    }
     // Text wins on mixed snapshots: an image carrying a text flavor (e.g. a
     // copied image URL) is more useful and more searchable as text, and this
     // preserves the long-standing behavior for every existing producer.
@@ -101,16 +109,153 @@ public struct CapturePolicy: Sendable {
     return .skip(.unsupportedType)
   }
 
-  public func classifyText(_ text: String) -> ClipKind {
+  /// Assigns the stored kind for accepted plain text. Order matters: color
+  /// and file references are strict full-string shapes checked first, links
+  /// keep their long-standing rule, and code is a conservative structural
+  /// vote that prefers false negatives (plain text) over polluting the
+  /// Code section with prose. Single-line snippets stay text unless they
+  /// are JSON, fenced, or shebanged; every multi-line signal needs two or
+  /// more matching lines, which prose almost never produces.
+  public func classifyKind(_ text: String) -> ClipKind {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if Self.isColor(trimmed) { return .color }
+    if Self.isFileReference(trimmed) { return .file }
+    if Self.isLink(trimmed) { return .link }
+    if Self.isCode(text) { return .code }
+    return .text
+  }
+
+  private static func isLink(_ trimmed: String) -> Bool {
     guard !trimmed.contains(where: \.isWhitespace),
       let components = URLComponents(string: trimmed),
       let scheme = components.scheme?.lowercased(),
       ["http", "https"].contains(scheme),
       components.host?.isEmpty == false
     else {
-      return .text
+      return false
     }
-    return .link
+    return true
+  }
+
+  private static func isColor(_ trimmed: String) -> Bool {
+    guard !trimmed.isEmpty else { return false }
+    if trimmed.hasPrefix("#") {
+      let hex = trimmed.dropFirst()
+      guard [3, 4, 6, 8].contains(hex.count) else { return false }
+      return hex.allSatisfy(\.isHexDigit)
+    }
+    let lower = trimmed.lowercased()
+    for function in ["rgb", "rgba", "hsl", "hsla"] {
+      guard lower.hasPrefix(function + "("), lower.hasSuffix(")") else { continue }
+      let inner = lower.dropFirst(function.count + 1).dropLast()
+      let parts = inner.split(separator: ",").map {
+        $0.trimmingCharacters(in: .whitespaces)
+      }
+      let channelCount = function.hasSuffix("a") ? 4 : 3
+      guard parts.count == channelCount else { continue }
+      let channels = parts.prefix(3)
+      let channelsValid: Bool
+      if function.hasPrefix("hsl") {
+        channelsValid = channels.enumerated().allSatisfy { index, part in
+          guard part.hasSuffix(index == 0 ? "" : "%") else { return false }
+          let number = index == 0 ? String(part) : String(part.dropLast())
+          guard let value = Int(number) else { return false }
+          return index == 0 ? (0...360).contains(value) : (0...100).contains(value)
+        }
+        guard channelsValid else { continue }
+      } else {
+        guard
+          channels.allSatisfy({ part in
+            guard let value = Int(part) else { return false }
+            return (0...255).contains(value)
+          })
+        else {
+          continue
+        }
+      }
+      if channelCount == 4 {
+        guard let alpha = Double(parts[3]), (0...1).contains(alpha) else { continue }
+      }
+      return true
+    }
+    return false
+  }
+
+  private static func isFileReference(_ trimmed: String) -> Bool {
+    guard !trimmed.isEmpty, trimmed.count <= 1_024 else { return false }
+    if trimmed.lowercased().hasPrefix("file://") { return true }
+    guard trimmed.hasPrefix("/") || trimmed.hasPrefix("~/") else { return false }
+    return !trimmed.contains(where: \.isNewline)
+  }
+
+  private static func isCode(_ text: String) -> Bool {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return false }
+    if trimmed.hasPrefix("```") { return true }
+    if trimmed.hasPrefix("#!") { return true }
+    if (trimmed.hasPrefix("{") || trimmed.hasPrefix("["))
+      && (try? JSONSerialization.jsonObject(
+        with: Data(trimmed.utf8), options: [.fragmentsAllowed])) != nil
+    {
+      return true
+    }
+    let rawLines = text.components(separatedBy: "\n")
+      .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    let lines = rawLines.map { $0.trimmingCharacters(in: .whitespaces) }
+    guard lines.count >= 2 else { return false }
+    // Match (line, class) pairs: a line can score in several classes, and
+    // short transcripts need every point. Prose survives because each class
+    // independently needs code-shaped lines.
+    var pairs = 0
+    for line in lines {
+      if line.hasSuffix(";") { pairs += 1 }
+      if Self.keywordLine(line) { pairs += 1 }
+      if Self.markupLine(line) { pairs += 1 }
+      if Self.shellLine(line) { pairs += 1 }
+    }
+    let indented = rawLines.contains(where: { $0.hasPrefix(" ") || $0.hasPrefix("\t") })
+    if lines.contains(where: { $0.hasSuffix(":") })
+      && indented
+      && balancedPairs(in: text, open: "(", close: ")")
+    {
+      // Python-style blocks: a colon header over indented calls.
+      pairs += 1
+    }
+    if balancedPairs(in: text, open: "{", close: "}") {
+      pairs += 1
+    }
+    return pairs >= 3
+  }
+
+  private static func keywordLine(_ line: String) -> Bool {
+    let keywords =
+      "^(?:def |class |function |func |fn |SELECT |INSERT |UPDATE |DELETE |CREATE |DROP |ALTER |FROM |WHERE |JOIN |GROUP |ORDER |HAVING |LIMIT |VALUES |SET |INTO |import |from \\S+ import |const |let |var |if |else |elif |for |while |return |switch |case |public |private |struct |enum |impl |package |#include|#import|@\\w+)"
+    return line.range(of: keywords, options: [.regularExpression, .caseInsensitive]) != nil
+  }
+
+  private static func markupLine(_ line: String) -> Bool {
+    line.range(of: #"^<[a-zA-Z/!?][^<>]*>$"#, options: .regularExpression) != nil
+  }
+
+  private static func shellLine(_ line: String) -> Bool {
+    if line.hasPrefix("$") || line.hasPrefix(">>>") { return true }
+    let commands =
+      "^(?:git|npm|npx|brew|cargo|docker|kubectl|ls|cd|echo|cat|grep|python3?|node|make|mkdir|rm|cp|mv|chmod|sudo|ssh|curl|wget|tar|zip|unzip|ps|kill|ping|awk|sed|find|xargs|jq|ffmpeg|rsync)\\s"
+    return line.range(of: commands, options: .regularExpression) != nil
+  }
+
+  private static func balancedPairs(in text: String, open: Character, close: Character) -> Bool {
+    var depth = 0
+    var found = false
+    for character in text {
+      if character == open {
+        depth += 1
+        found = true
+      } else if character == close {
+        depth -= 1
+        if depth < 0 { return false }
+      }
+    }
+    return found && depth == 0
   }
 }

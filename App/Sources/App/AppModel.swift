@@ -443,6 +443,9 @@ extension ClipKind {
     case .text: "text"
     case .link: "link"
     case .image: "image"
+    case .code: "code"
+    case .color: "color"
+    case .file: "file"
     }
   }
 }

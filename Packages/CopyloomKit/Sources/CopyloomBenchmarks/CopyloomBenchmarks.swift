@@ -145,7 +145,7 @@ private enum CopyloomBenchmarks {
         let record = try decoder.decode(CorpusRecord.self, from: Data(line.utf8))
         return (
           id: UUID(uuidString: record.uuid) ?? UUID(),
-          kind: CapturePolicy().classifyText(record.text),
+          kind: CapturePolicy().classifyKind(record.text),
           text: record.text,
           date: Date(timeIntervalSince1970: TimeInterval(record.capturedAtMilliseconds) / 1_000),
           source: nil

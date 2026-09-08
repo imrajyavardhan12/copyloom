@@ -106,6 +106,16 @@ matching the parser's existing philosophy.
    No migration.
 2. **Type sections + code preview**: Images/Links/Files/Code/Colors backed
    by existing filters; highlighter decision inside this slice.
+   (Scoped: capture-time kind detection for code/color/file text; plain
+   mono code preview + color swatches. No highlighting dependency: Splash
+   is Swift-grammars-only and quiet since 2024 — wrong tool for polyglot
+   clips. Multi-language highlighting stays a later slice with its own
+   dependency case. Finder file-copy flavors unverified: Files v1 covers
+   path-like text; `clip_files` bookmarks stay future.)
+   (Landed update: live probe showed Finder offers `public.file-url`
+   alongside a lossy name string, so file references take policy priority
+   and persist as newline-joined POSIX paths — references only, never
+   copied bytes. Bookmark-backed `clip_files` still future.)
 3. **Organization**: migration 005, collections/tags CRUD, drag/drop,
    Smart Collections over saved queries.
 4. **Searchable OCR**: migration 006, background queue, quarantine UX,

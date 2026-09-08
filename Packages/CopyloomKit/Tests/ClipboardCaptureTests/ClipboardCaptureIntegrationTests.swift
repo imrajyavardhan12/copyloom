@@ -68,4 +68,6 @@ private final class IntegrationPasteboard: PasteboardReading {
   }
 
   func readImageData() -> (data: Data, uti: String)? { nil }
+
+  func readFileURLs() -> [URL] { [] }
 }

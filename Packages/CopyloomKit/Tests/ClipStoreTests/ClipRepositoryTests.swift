@@ -316,6 +316,45 @@ struct ClipRepositoryTests {
     #expect(try await database.health().fts5IntegrityCheckPassed)
   }
 
+  @Test("filters code, color and file clips by type")
+  func filtersNewKinds() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let codeID = UUID()
+    let colorID = UUID()
+    let fileID = UUID()
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(
+        id: codeID, kind: .code, text: "def f():\n    pass",
+        capturedAt: .now)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(
+        id: colorID, kind: .color, text: "#ff00aa", capturedAt: .now)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(
+        id: fileID, kind: .file, text: "/tmp/a.txt", capturedAt: .now)
+    )
+
+    for (filter, expected) in [
+      (SearchContentType.code, codeID),
+      (SearchContentType.color, colorID),
+      (SearchContentType.file, fileID),
+    ] {
+      let results = try await database.repository.search(
+        SearchQuery(text: [], filters: [.contentType(filter)]),
+        limit: 20
+      )
+      #expect(results.map(\.id) == [expected])
+    }
+  }
+
   @Test("deduplicates identical image bytes")
   func deduplicatesImages() async throws {
     let directory = FileManager.default.temporaryDirectory

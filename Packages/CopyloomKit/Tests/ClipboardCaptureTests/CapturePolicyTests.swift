@@ -84,6 +84,55 @@ struct CapturePolicyTests {
     #expect(decision == .skip(.unsupportedType))
   }
 
+  @Test("prefers file references over co-declared text and icon flavors")
+  func prefersFileReferences() {
+    let decision = CapturePolicy().preflight(
+      metadata: PasteboardMetadata(
+        changeCount: 1,
+        typeIdentifiers: [
+          PasteboardTypeIdentifier.fileURL,
+          PasteboardTypeIdentifier.plainText,
+          PasteboardTypeIdentifier.tiff,
+        ]
+      ),
+      configuration: CaptureConfiguration(isEnabled: true)
+    )
+
+    #expect(decision == .allowFile(nil))
+  }
+
+  @Test("applies marker and ignore rules to file snapshots")
+  func guardsFileSnapshots() {
+    let policy = CapturePolicy()
+    let concealed = policy.preflight(
+      metadata: PasteboardMetadata(
+        changeCount: 1,
+        typeIdentifiers: [
+          PasteboardTypeIdentifier.concealed, PasteboardTypeIdentifier.fileURL,
+        ]
+      ),
+      configuration: CaptureConfiguration(isEnabled: true)
+    )
+    #expect(concealed == .skip(.concealed))
+
+    let ignored = policy.preflight(
+      metadata: PasteboardMetadata(
+        changeCount: 1,
+        typeIdentifiers: [PasteboardTypeIdentifier.fileURL],
+        frontmostApplication: ClipSource(
+          bundleIdentifier: "com.1password.1password",
+          applicationName: "1Password",
+          provenance: .frontmostApplication
+        )
+      ),
+      configuration: CaptureConfiguration(
+        isEnabled: true,
+        ignoredBundleIdentifiers: ["com.1password.1password"]
+      )
+    )
+    #expect(ignored == .skip(.ignoredApplication))
+  }
+
   @Test("applies marker and ignore rules to image snapshots")
   func guardsImageSnapshots() {
     let policy = CapturePolicy()
@@ -114,5 +163,80 @@ struct CapturePolicyTests {
       )
     )
     #expect(ignored == .skip(.ignoredApplication))
+  }
+}
+
+@Suite("Clip kind classification")
+struct ClassificationTests {
+  private let policy = CapturePolicy()
+
+  @Test("recognizes strict color shapes")
+  func recognizesColors() {
+    let colors = [
+      "#fff", "#FF00AA", "#ff00aa", "#abcd", "#aabbccdd",
+      "rgb(255, 0, 128)", "rgba(10, 20, 30, 0.5)", "hsl(120, 50%, 50%)",
+      "hsla(0, 0%, 0%, 1)",
+    ]
+    for color in colors {
+      #expect(policy.classifyKind(color) == .color, "missed \(color)")
+    }
+  }
+
+  @Test("rejects near-colors")
+  func rejectsNearColors() {
+    let nonColors = [
+      "#ggg", "#12", "#12345", "rgb(300, 0, 0)", "rgb(1, 2)",
+      "red", "Meeting #room3 notes", "#hashtag", "hsl(400, 50%, 50%)",
+    ]
+    for text in nonColors {
+      #expect(policy.classifyKind(text) != .color, "flagged \(text)")
+    }
+  }
+
+  @Test("recognizes file references and keeps links distinct")
+  func recognizesFiles() {
+    #expect(policy.classifyKind("/Users/rvs/notes.txt") == .file)
+    #expect(policy.classifyKind("~/Documents/report.pdf") == .file)
+    #expect(policy.classifyKind("file:///tmp/a.png") == .file)
+    #expect(policy.classifyKind("/") == .file)
+    #expect(policy.classifyKind("docs/guide") == .text)
+    #expect(policy.classifyKind("just / text") == .text)
+    #expect(policy.classifyKind("https://example.com/a/b") == .link)
+  }
+
+  @Test("recognizes code shapes")
+  func recognizesCode() {
+    let snippets = [
+      "{\"name\": \"copyloom\", \"pins\": [1, 2]}",
+      "[\n  1,\n  2,\n  3\n]",
+      "```swift\nlet x = 1\n```",
+      "#!/bin/bash\necho hi",
+      "def hello():\n    print(\"hi\")\n    return 1",
+      "function greet(name) {\n  console.log(name);\n  return name;\n}",
+      "SELECT id, name\nFROM users\nWHERE active = 1",
+      "$ git status\n$ git add .\n$ git commit",
+      "<html>\n<head>\n</head>",
+      "const x = 1;\nconst y = 2;",
+    ]
+    for snippet in snippets {
+      #expect(policy.classifyKind(snippet) == .code, "missed \(snippet.prefix(30))")
+    }
+  }
+
+  @Test("leaves ordinary prose as text")
+  func leavesProse() {
+    let prose = [
+      "Hi Ana,\n\nThanks for the update from yesterday.\nI will return the form tomorrow.\n\nBest,\nRavi",
+      "# Title\n\n- item one\n- item two\n\nSome paragraph here.",
+      "hey\nlol\nbrb",
+      "1. first\n2. second\n3. third",
+      "see Fig. (1) for details\nas shown (above)\nend of note",
+      "if (x > 0) { print(x); }",
+      "Dear Sir,\nreturn to sender",
+      "$5 for coffee\n$10 for lunch\nsee you there",
+    ]
+    for text in prose {
+      #expect(policy.classifyKind(text) == .text, "flagged \(text.prefix(30))")
+    }
   }
 }

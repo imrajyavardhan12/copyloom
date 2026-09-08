@@ -63,6 +63,14 @@ public final class NSPasteboardReader: PasteboardReading {
     return nil
   }
 
+  public func readFileURLs() -> [URL] {
+    guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
+    else {
+      return []
+    }
+    return urls.filter { $0.isFileURL }
+  }
+
   private var accessState: PasteboardAccessState {
     guard #available(macOS 15.4, *) else { return .allowed }
     switch pasteboard.accessBehavior {

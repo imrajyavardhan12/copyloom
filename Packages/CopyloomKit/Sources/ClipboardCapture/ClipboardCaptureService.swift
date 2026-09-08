@@ -82,6 +82,8 @@ public final class ClipboardCaptureService {
       return await captureText(source: source, observedChangeCount: observedChangeCount)
     case .allowImage(let source):
       return await captureImage(source: source, observedChangeCount: observedChangeCount)
+    case .allowFile(let source):
+      return await captureFile(source: source, observedChangeCount: observedChangeCount)
     }
   }
 
@@ -103,7 +105,7 @@ public final class ClipboardCaptureService {
       let summary = try await repository.saveAcceptedText(
         AcceptedTextClip(
           id: makeUUID(),
-          kind: policy.classifyText(text),
+          kind: policy.classifyKind(text),
           text: text,
           capturedAt: now(),
           source: source
@@ -155,6 +157,37 @@ public final class ClipboardCaptureService {
       } catch {
         return .failed(.storage)
       }
+    }
+  }
+
+  /// File references are stored as newline-joined POSIX paths, never as
+  /// copied bytes. When the flavor is advertised but unreadable, the text
+  /// branch runs instead so long-standing filename capture is preserved.
+  private func captureFile(source: ClipSource?, observedChangeCount: Int) async -> CaptureOutcome {
+    let urls = pasteboard.readFileURLs()
+    guard !urls.isEmpty else {
+      return await captureText(source: source, observedChangeCount: observedChangeCount)
+    }
+    guard pasteboard.changeCount == observedChangeCount else {
+      return .skipped(.inconsistentSnapshot)
+    }
+    let text = urls.map(\.path).joined(separator: "\n")
+    guard sensitiveContentDetector.inspect(text) == .safe else {
+      return .skipped(.sensitiveContent)
+    }
+    do {
+      let summary = try await repository.saveAcceptedText(
+        AcceptedTextClip(
+          id: makeUUID(),
+          kind: .file,
+          text: text,
+          capturedAt: now(),
+          source: source
+        )
+      )
+      return .captured(summary)
+    } catch {
+      return .failed(.storage)
     }
   }
 
