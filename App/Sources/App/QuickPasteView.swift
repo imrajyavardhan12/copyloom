@@ -134,7 +134,7 @@ struct QuickPasteView: View {
       Text("Return: Paste")
       Text("⌘Return: Copy only")
       Spacer()
-      Text("⌘P Pin")
+      Text("⌘P Pin ⌘F Fav")
       Text("⌥⌫ Delete")
       Text("⌘1–9")
     }
@@ -154,7 +154,7 @@ private struct QuickPasteRow: View {
   var body: some View {
     HStack(spacing: 12) {
       if clip.kind == .image {
-        ClipThumbnail(model: model, clip: clip, isSelected: isSelected)
+        ClipThumbnail(load: { await model.loadThumbnail(for: clip) }, isSelected: isSelected)
       } else {
         Image(systemName: clip.kind == .link ? "link" : "text.alignleft")
           .font(.system(size: 15, weight: .semibold))
@@ -183,6 +183,12 @@ private struct QuickPasteRow: View {
         }
         .font(.caption)
         .foregroundStyle(isSelected ? Color.white.opacity(0.78) : Color.secondary)
+      }
+
+      if clip.isFavorite {
+        Image(systemName: "star.fill")
+          .foregroundStyle(.yellow)
+          .accessibilityLabel("Favorite")
       }
 
       if clip.isPinned {
@@ -215,40 +221,12 @@ private struct QuickPasteRow: View {
 
   private var accessibilityLabel: String {
     let source = clip.source?.applicationName ?? clip.source?.bundleIdentifier ?? "unknown app"
-    if clip.kind == .image { return "Image from \(source)" }
-    return "\(clip.kind == .link ? "Link" : "Text") from \(source): \(clip.text)"
-  }
-}
-
-/// Lazily loaded image thumbnail. The `.task` starts on appearance and
-/// cancels on disappearance, so off-screen rows never decode bytes.
-private struct ClipThumbnail: View {
-  let model: QuickPasteModel
-  let clip: ClipSummary
-  let isSelected: Bool
-
-  @State private var image: NSImage?
-
-  var body: some View {
-    Group {
-      if let image {
-        Image(nsImage: image)
-          .resizable()
-          .scaledToFill()
-      } else {
-        Image(systemName: "photo")
-          .font(.system(size: 15, weight: .semibold))
-          .foregroundStyle(isSelected ? Color.white : Color.accentColor)
-      }
+    if clip.kind == .image {
+      let prefix = clip.isFavorite ? "Favorite " : ""
+      return "\(prefix)image from \(source)"
     }
-    .frame(width: 28, height: 28)
-    .background(
-      (isSelected ? Color.white.opacity(0.18) : Color.accentColor.opacity(0.12)),
-      in: RoundedRectangle(cornerRadius: 7)
-    )
-    .clipShape(RoundedRectangle(cornerRadius: 7))
-    .task {
-      image = await model.loadThumbnail(for: clip)
-    }
+    let kind = clip.kind == .link ? "Link" : "Text"
+    let prefix = clip.isFavorite ? "Favorite " : ""
+    return "\(prefix)\(kind) from \(source): \(clip.text)"
   }
 }

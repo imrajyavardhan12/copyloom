@@ -23,6 +23,10 @@ struct CopyloomApp: App {
       }
       .keyboardShortcut("v", modifiers: [.control, .command])
 
+      Button("Open Library") {
+        model.openLibrary()
+      }
+
       if model.automaticPasteEnabled {
         Label("Automatic Paste Enabled", systemImage: "checkmark.circle")
       } else {

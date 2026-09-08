@@ -1,8 +1,10 @@
 import AppKit
+import Carbon.HIToolbox
 import ClipDomain
 import ClipStore
 import ClipboardCapture
 import Foundation
+import LibraryFeature
 import Observation
 
 @MainActor
@@ -24,7 +26,10 @@ final class AppModel {
   @ObservationIgnored private var captureService: ClipboardCaptureService?
   @ObservationIgnored private var monitor: PasteboardPollingMonitor?
   @ObservationIgnored private var quickPasteController: QuickPastePanelController?
+  @ObservationIgnored private var libraryWindowController: LibraryWindowController?
   @ObservationIgnored private var globalHotKey: GlobalHotKey?
+  @ObservationIgnored private var libraryHotKey: GlobalHotKey?
+  private(set) var libraryModel: LibraryModel?
 
   init(defaults: UserDefaults = .standard) {
     let store = CaptureSettingsStore(defaults: defaults)
@@ -74,12 +79,31 @@ final class AppModel {
       )
       self.quickPasteController = quickPasteController
       automaticPasteEnabled = quickPasteController.hasPostEventAccess
+      let libraryModel = LibraryModel(repository: database.repository)
+      self.libraryModel = libraryModel
+      self.libraryWindowController = LibraryWindowController(model: libraryModel)
       do {
         globalHotKey = try GlobalHotKey { [weak self] in
           self?.toggleQuickPaste()
         }
       } catch {
         lastEventText = "The ⌃⌘V shortcut is unavailable; use the Copyloom menu."
+      }
+      do {
+        // Separate registration so a ⌃⌘L conflict degrades to menu-only
+        // Library access without disturbing the paste shortcut.
+        libraryHotKey = try GlobalHotKey(registrations: [
+          GlobalHotKey.Registration(
+            keyCode: UInt32(kVK_ANSI_L),
+            modifiers: UInt32(cmdKey | controlKey),
+            identifier: GlobalHotKey.libraryIdentifier,
+            action: { [weak self] in self?.openLibrary() }
+          )
+        ])
+      } catch {
+        lastEventText =
+          (lastEventText.map { $0 + " " } ?? "")
+          + "The ⌃⌘L Library shortcut is unavailable; use the Copyloom menu."
       }
       if captureEnabled && !capturePaused {
         monitor?.start()
@@ -273,6 +297,10 @@ final class AppModel {
     )
   }
 
+  func openLibrary() {
+    libraryWindowController?.toggle()
+  }
+
   func requestAutomaticPastePermission() {
     // Let the status-menu click finish before presenting a modal alert. Without
     // this handoff, the originating click can activate the alert's default
@@ -297,7 +325,9 @@ final class AppModel {
   func shutdown() {
     monitor?.stop()
     quickPasteController?.hide()
+    libraryWindowController?.hide()
     globalHotKey = nil
+    libraryHotKey = nil
     try? database?.close()
   }
 

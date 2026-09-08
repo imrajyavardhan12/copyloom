@@ -140,6 +140,22 @@ public final class QuickPasteModel {
     }
   }
 
+  public func toggleFavoriteSelected() async {
+    guard let selectedClip else { return }
+    let newValue = !selectedClip.isFavorite
+    do {
+      try await repository.setFavorite(id: selectedClip.id, isFavorite: newValue)
+      guard let currentIndex = items.firstIndex(where: { $0.id == selectedClip.id }) else {
+        return
+      }
+      items[currentIndex] = selectedClip.withFavorited(newValue)
+      selectedIndex = currentIndex
+      errorMessage = nil
+    } catch {
+      errorMessage = "Unable to update the favorite"
+    }
+  }
+
   public func deleteSelected() async {
     guard let selectedClip else { return }
     do {
@@ -213,6 +229,22 @@ public final class QuickPasteModel {
 
 extension ClipSummary {
   fileprivate func withPinned(_ isPinned: Bool) -> ClipSummary {
+    ClipSummary(
+      id: id,
+      kind: kind,
+      text: text,
+      createdAt: createdAt,
+      lastSeenAt: lastSeenAt,
+      copyCount: copyCount,
+      useCount: useCount,
+      lastUsedAt: lastUsedAt,
+      isPinned: isPinned,
+      isFavorite: isFavorite,
+      source: source
+    )
+  }
+
+  fileprivate func withFavorited(_ isFavorite: Bool) -> ClipSummary {
     ClipSummary(
       id: id,
       kind: kind,

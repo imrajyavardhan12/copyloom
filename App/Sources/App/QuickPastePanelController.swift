@@ -141,6 +141,9 @@ final class QuickPastePanelController {
     case kVK_ANSI_P where modifiers.contains(.command):
       Task { await model.togglePinSelected() }
       return true
+    case kVK_ANSI_F where modifiers.contains(.command):
+      Task { await model.toggleFavoriteSelected() }
+      return true
     case kVK_Delete where modifiers.contains(.option) || modifiers.contains(.command):
       Task { await model.deleteSelected() }
       return true

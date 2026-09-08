@@ -19,6 +19,10 @@
 		A2000000000000000000000A /* QuickPasteFeature in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000004 /* QuickPasteFeature */; };
 		A2000000000000000000000B /* PasteCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000009 /* PasteCoordinator.swift */; };
 		A2000000000000000000000C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000000000000000000000A /* SettingsView.swift */; };
+		A2000000000000000000000D /* LibraryFeature in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000005 /* LibraryFeature */; };
+		A2000000000000000000000E /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000000000000000000000B /* LibraryView.swift */; };
+		A2000000000000000000000F /* ClipThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000000000000000000000C /* ClipThumbnail.swift */; };
+		A20000000000000000000010 /* LibraryWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000000000000000000000D /* LibraryWindowController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +36,9 @@
 		A30000000000000000000008 /* GlobalHotKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKey.swift; sourceTree = "<group>"; };
 		A30000000000000000000009 /* PasteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteCoordinator.swift; sourceTree = "<group>"; };
 		A3000000000000000000000A /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A3000000000000000000000B /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		A3000000000000000000000C /* ClipThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipThumbnail.swift; sourceTree = "<group>"; };
+		A3000000000000000000000D /* LibraryWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryWindowController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -43,6 +50,7 @@
 				A20000000000000000000004 /* ClipboardCapture in Frameworks */,
 				A20000000000000000000005 /* ClipDomain in Frameworks */,
 				A2000000000000000000000A /* QuickPasteFeature in Frameworks */,
+				A2000000000000000000000D /* LibraryFeature in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -76,6 +84,9 @@
 				A30000000000000000000007 /* QuickPastePanelController.swift */,
 				A30000000000000000000008 /* GlobalHotKey.swift */,
 				A30000000000000000000009 /* PasteCoordinator.swift */,
+				A3000000000000000000000B /* LibraryView.swift */,
+				A3000000000000000000000C /* ClipThumbnail.swift */,
+				A3000000000000000000000D /* LibraryWindowController.swift */,
 				A3000000000000000000000A /* SettingsView.swift */,
 			);
 			path = App;
@@ -173,6 +184,9 @@
 				A20000000000000000000008 /* QuickPastePanelController.swift in Sources */,
 				A20000000000000000000009 /* GlobalHotKey.swift in Sources */,
 				A2000000000000000000000B /* PasteCoordinator.swift in Sources */,
+				A2000000000000000000000E /* LibraryView.swift in Sources */,
+				A2000000000000000000000F /* ClipThumbnail.swift in Sources */,
+				A20000000000000000000010 /* LibraryWindowController.swift in Sources */,
 				A2000000000000000000000C /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -395,6 +409,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A80000000000000000000001 /* XCLocalSwiftPackageReference "../Packages/CopyloomKit" */;
 			productName = ClipDomain;
+		};
+		A90000000000000000000005 /* LibraryFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A80000000000000000000001 /* XCLocalSwiftPackageReference "../Packages/CopyloomKit" */;
+			productName = LibraryFeature;
 		};
 		A90000000000000000000004 /* QuickPasteFeature */ = {
 			isa = XCSwiftPackageProductDependency;

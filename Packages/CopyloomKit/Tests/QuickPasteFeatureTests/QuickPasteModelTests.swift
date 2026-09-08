@@ -91,6 +91,23 @@ struct QuickPasteModelTests {
     #expect(model.selectedIndex == 0)
   }
 
+  @Test("toggles the favorite on the selected clip")
+  func togglesFavorite() async throws {
+    let clip = fixture("star me")
+    let repository = QuickPasteRepositorySpy(clips: [clip])
+    let model = QuickPasteModel(repository: repository, delivery: QuickPasteDeliverySpy())
+
+    await model.loadRecent()
+    await model.toggleFavoriteSelected()
+
+    #expect(await repository.favoriteMutation() == .init(id: clip.id, isFavorite: true))
+    #expect(model.items.first?.isFavorite == true)
+
+    await model.toggleFavoriteSelected()
+    #expect(await repository.favoriteMutation() == .init(id: clip.id, isFavorite: false))
+    #expect(model.items.first?.isFavorite == false)
+  }
+
   @Test("loads thumbnails for image clips only")
   func loadsThumbnails() async throws {
     let png = try #require(
@@ -164,12 +181,18 @@ private actor QuickPasteRepositorySpy: ClipRepository {
     let isPinned: Bool
   }
 
+  struct Favorite: Equatable, Sendable {
+    let id: UUID
+    let isFavorite: Bool
+  }
+
   private var clips: [ClipSummary]
   private let searchResults: [ClipSummary]
   private let imageData: [UUID: Data]
   private var searchQuery: SearchQuery?
   private var use: Use?
   private var pin: Pin?
+  private var favorite: Favorite?
   private var deleted: UUID?
 
   init(
@@ -200,7 +223,9 @@ private actor QuickPasteRepositorySpy: ClipRepository {
     pin = Pin(id: id, isPinned: isPinned)
   }
 
-  func setFavorite(id: UUID, isFavorite: Bool) async throws {}
+  func setFavorite(id: UUID, isFavorite: Bool) async throws {
+    favorite = Favorite(id: id, isFavorite: isFavorite)
+  }
 
   func deleteExpired(before cutoff: Date) async throws -> Int { 0 }
 
@@ -227,6 +252,7 @@ private actor QuickPasteRepositorySpy: ClipRepository {
   func lastSearchQuery() -> SearchQuery? { searchQuery }
   func recordedUse() -> Use? { use }
   func pinnedMutation() -> Pin? { pin }
+  func favoriteMutation() -> Favorite? { favorite }
   func deletedID() -> UUID? { deleted }
 }
 
