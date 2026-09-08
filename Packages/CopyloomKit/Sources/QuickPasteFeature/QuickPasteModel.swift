@@ -4,6 +4,7 @@ import ClipSearch
 import Foundation
 import ImageIO
 import Observation
+import os
 
 public enum ClipDeliveryMode: Equatable, Sendable {
   case primary
@@ -56,9 +57,15 @@ public final class QuickPasteModel {
   }
 
   public func loadRecent() async {
+    let start = CFAbsoluteTimeGetCurrent()
     await replaceItems {
       try await repository.recent(limit: 100)
     }
+    // Numeric-only telemetry for the M2 warm-open evidence (see the panel
+    // controller's show line for the other half). No content logged.
+    os_log(
+      "quickpaste load-recent %.2fms count=%d", log: .quickPaste, type: .default,
+      (CFAbsoluteTimeGetCurrent() - start) * 1_000, Int32(items.count))
   }
 
   public func search(_ input: String) async {
@@ -220,4 +227,9 @@ extension ClipSummary {
       source: source
     )
   }
+}
+
+extension OSLog {
+  fileprivate static let quickPaste = OSLog(
+    subsystem: "io.github.imrajyavardhan12.copyloom", category: "QuickPaste")
 }

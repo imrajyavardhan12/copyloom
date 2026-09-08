@@ -3,6 +3,7 @@ import Carbon.HIToolbox
 import ClipDomain
 import QuickPasteFeature
 import SwiftUI
+import os
 
 @MainActor
 final class QuickPastePanelController {
@@ -71,11 +72,17 @@ final class QuickPastePanelController {
   }
 
   func show(targetApplication: NSRunningApplication?) {
+    let start = CFAbsoluteTimeGetCurrent()
     pasteCoordinator.prepare(targetApplication: targetApplication)
     panel.contentView = NSHostingView(rootView: QuickPasteView(model: model))
     positionOnActiveScreen()
     panel.orderFrontRegardless()
     panel.makeKey()
+    // Numeric-only performance telemetry for the M2 warm-open evidence.
+    // No clip content, queries, or identifiers are logged.
+    os_log(
+      "quickpaste panel-show %.2fms", log: .quickPaste, type: .default,
+      (CFAbsoluteTimeGetCurrent() - start) * 1_000)
   }
 
   func hide() {
@@ -155,4 +162,9 @@ private final class QuickPastePanel: NSPanel {
     }
     super.sendEvent(event)
   }
+}
+
+extension OSLog {
+  fileprivate static let quickPaste = OSLog(
+    subsystem: "io.github.imrajyavardhan12.copyloom", category: "QuickPaste")
 }

@@ -29,9 +29,9 @@ This roadmap uses vertical slices and evidence gates. Dates are intentionally ab
 
 **Exit:** clean checkout builds/tests with one documented command on supported CI; no clipboard UI required.
 
-## M2 — First serious vertical slice (in progress)
+## M2 — First serious vertical slice (complete 2026-09-08)
 
-**Implemented tracers:** explicit opt-in text/link capture, privacy-marker and sensitive-content rejection before storage, source provenance, deduplication, app-container persistence, pause/resume, ignore-next-copy, local clip count, native Quick Paste with global `⌃⌘V`, live FTS5 search, keyboard navigation, copy/pin/delete/use tracking, and Accessibility-gated paste into the retained previous application with copy-only fallback. Configurable ignored-app UI, retention cleanup, clean-user permission/focus matrix, and images remain.
+Implemented and signed off in `docs/acceptance/m2-vertical-slice.md`: explicit opt-in text/link/image capture, privacy-marker and sensitive-content rejection before storage (text patterns plus Vision OCR gate with OCR-tolerant header check), source provenance, deduplication, app-container persistence, pause/resume, ignore-next-copy, local clip count, native Quick Paste with global `⌃⌘V`, live FTS5 search, keyboard navigation, copy/pin/delete/use tracking, Accessibility-gated paste with copy-only fallback, configurable ignored-app UI, 30-day retention with tombstone purge and attachment file GC, versioned fail-closed settings, benchmark runner with first 100k report, and panel/idle live measurements. Deferred items are listed in the acceptance sign-off, not dropped.
 
 ### Capture and privacy
 

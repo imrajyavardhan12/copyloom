@@ -75,3 +75,17 @@ relevance work.
   signed running app + Instruments; manual protocol to follow (no code).
 - Cross-machine comparison: baselines are this-machine only per the
   regression policy; rerun, don't compare across hardware.
+
+## Live-app measurements (2026-09-08, ad-hoc build `e42bb5`, Mac15,12)
+
+- Panel warm-open over 16 user taps (`⌃⌘V` → `Esc`, bare and typed): window
+  show median ~44 ms settling to ~25 ms warm; data load median ~3.5 ms
+  (p95 17 ms). End-to-end open-to-usable ≈ 48 ms + one render frame ≈
+  64 ms typical, under the ~100 ms instantaneous bar. Numeric-only `os_log`
+  telemetry (`quickpaste panel-show` / `load-recent`), no content logged.
+  Follow-up: reuse the hosting view instead of rebuilding it per open to
+  shave ~20–40 ms off the show cost.
+- Idle cost with clipboard untouched for 2 minutes: 0.0% CPU, +0.01 s process
+  time over the window, 36 MB footprint, against the 0.5 s coalescing poll
+  with 20% tolerance. Energy in mW not measured (no `powermetrics` run);
+  ~zero CPU makes material energy impact unlikely.
