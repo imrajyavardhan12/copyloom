@@ -15,6 +15,34 @@ public protocol ClipRepository: Sendable {
   /// graceful status message instead of failing delivery.
   func attachmentData(for id: UUID) async throws -> Data?
 
+  // MARK: - Collections
+
+  @discardableResult
+  func createCollection(name: String, at date: Date) async throws -> ClipCollection
+  func renameCollection(id: UUID, name: String, at date: Date) async throws
+  func deleteCollection(id: UUID) async throws
+  func listCollections() async throws -> [ClipCollection]
+  func addToCollection(collectionID: UUID, clipID: UUID, at date: Date) async throws
+  func removeFromCollection(collectionID: UUID, clipID: UUID) async throws
+  func collectionClips(collectionID: UUID, limit: Int) async throws -> [ClipSummary]
+
+  // MARK: - Tags
+
+  @discardableResult
+  func getOrCreateTag(name: String) async throws -> ClipTag
+  func tagClip(id: UUID, tag: String) async throws
+  func untagClip(id: UUID, tag: String) async throws
+  func tags(for id: UUID) async throws -> [ClipTag]
+  func deleteTag(id: UUID) async throws
+
+  // MARK: - Saved queries
+
+  @discardableResult
+  func saveQuery(name: String, queryText: String, at date: Date) async throws -> SavedQuery
+  func renameQuery(id: UUID, name: String, at date: Date) async throws
+  func deleteQuery(id: UUID) async throws
+  func listQueries() async throws -> [SavedQuery]
+
   func count() async throws -> Int
 
   func setPinned(id: UUID, isPinned: Bool) async throws

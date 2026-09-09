@@ -6,6 +6,7 @@ import GRDB
 public enum ClipStoreError: Error, Equatable, Sendable {
   case emptyText
   case emptyAttachment
+  case invalidName
   case unsupportedAttachmentType(String)
   case invalidImageDimensions
   case invalidLimit(Int)
@@ -14,6 +15,7 @@ public enum ClipStoreError: Error, Equatable, Sendable {
   case corruptClipKind(Int)
   case corruptSourceProvenance(Int)
   case clipNotFound(UUID)
+  case collectionNotFound(UUID)
   case missingSavedClip
   case missingStoredRepresentation
 }
@@ -462,6 +464,339 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     try await fetch(query: SearchQuery(text: [], filters: []), limit: limit)
   }
 
+  // MARK: - Collections
+
+  func createCollection(name: String, at date: Date) async throws -> ClipCollection {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { throw ClipStoreError.invalidName }
+    let id = UUID()
+    let milliseconds = date.millisecondsSince1970
+    try await pool.write { database in
+      try database.execute(
+        sql: """
+          INSERT INTO collections (uuid, name, created_at, updated_at)
+          VALUES (?, ?, ?, ?)
+          """,
+        arguments: [id.uuidString.lowercased(), trimmed, milliseconds, milliseconds]
+      )
+    }
+    return ClipCollection(id: id, name: trimmed, createdAt: date, updatedAt: date)
+  }
+
+  func renameCollection(id: UUID, name: String, at date: Date) async throws {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { throw ClipStoreError.invalidName }
+    try await pool.write { database in
+      try database.execute(
+        sql: """
+          UPDATE collections SET name = ?, updated_at = ?
+          WHERE uuid = ? AND deleted_at IS NULL
+          """,
+        arguments: [trimmed, date.millisecondsSince1970, id.uuidString.lowercased()]
+      )
+    }
+  }
+
+  func deleteCollection(id: UUID) async throws {
+    try await pool.write { database in
+      // Hard delete: membership rows cascade; clips themselves are untouched.
+      try database.execute(
+        sql: "DELETE FROM collections WHERE uuid = ?",
+        arguments: [id.uuidString.lowercased()]
+      )
+    }
+  }
+
+  func listCollections() async throws -> [ClipCollection] {
+    try await pool.read { database in
+      let rows = try Row.fetchAll(
+        database,
+        sql: """
+          SELECT uuid, name, created_at, updated_at FROM collections
+          WHERE deleted_at IS NULL
+          ORDER BY name COLLATE NOCASE, id
+          """
+      )
+      return try rows.map { row in
+        let rawID: String = row["uuid"]
+        guard let id = UUID(uuidString: rawID) else {
+          throw ClipStoreError.corruptClipIdentifier(rawID)
+        }
+        let name: String = row["name"]
+        let created: Int64 = row["created_at"]
+        let updated: Int64 = row["updated_at"]
+        return ClipCollection(
+          id: id,
+          name: name,
+          createdAt: Date(millisecondsSince1970: created),
+          updatedAt: Date(millisecondsSince1970: updated)
+        )
+      }
+    }
+  }
+
+  func addToCollection(collectionID: UUID, clipID: UUID, at date: Date) async throws {
+    try await pool.write { database in
+      guard
+        let collectionRowID = try Int64.fetchOne(
+          database,
+          sql: "SELECT id FROM collections WHERE uuid = ? AND deleted_at IS NULL",
+          arguments: [collectionID.uuidString.lowercased()]
+        )
+      else {
+        throw ClipStoreError.collectionNotFound(collectionID)
+      }
+      let clipRowID = try Self.clipRowID(id: clipID, database: database)
+      let milliseconds = date.millisecondsSince1970
+      try database.execute(
+        sql: """
+          INSERT INTO collection_items (collection_id, clip_id, position, added_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(collection_id, clip_id) DO NOTHING
+          """,
+        arguments: [collectionRowID, clipRowID, milliseconds, milliseconds]
+      )
+    }
+  }
+
+  func removeFromCollection(collectionID: UUID, clipID: UUID) async throws {
+    try await pool.write { database in
+      try database.execute(
+        sql: """
+          DELETE FROM collection_items
+          WHERE collection_id = (
+            SELECT id FROM collections WHERE uuid = ?
+          ) AND clip_id = (
+            SELECT id FROM clips WHERE uuid = ?
+          )
+          """,
+        arguments: [collectionID.uuidString.lowercased(), clipID.uuidString.lowercased()]
+      )
+    }
+  }
+
+  func collectionClips(collectionID: UUID, limit: Int) async throws -> [ClipSummary] {
+    try validate(limit: limit)
+    return try await pool.read { database in
+      let rows = try Row.fetchAll(
+        database,
+        sql: """
+          SELECT c.uuid, c.kind, r.inline_text AS text, c.created_at, c.last_seen_at,
+                 c.copy_count, c.use_count, c.last_used_at, c.is_pinned, c.is_favorite,
+                 c.latest_source_provenance,
+                 latest_app.bundle_id AS source_bundle_id,
+                 latest_app.display_name AS source_application_name
+          FROM collection_items item
+          JOIN clips c ON c.id = item.clip_id
+          JOIN clip_representations r
+            ON r.clip_id = c.id AND r.item_index = 0
+          LEFT JOIN applications latest_app ON latest_app.id = c.latest_application_id
+          JOIN collections collection ON collection.id = item.collection_id
+          WHERE collection.uuid = ?
+            AND collection.deleted_at IS NULL
+            AND c.deleted_at IS NULL
+          ORDER BY item.position DESC, item.added_at DESC, c.id DESC
+          LIMIT ?
+          """,
+        arguments: [collectionID.uuidString.lowercased(), limit]
+      )
+      return try rows.map(Self.summary)
+    }
+  }
+
+  // MARK: - Tags
+
+  func getOrCreateTag(name: String) async throws -> ClipTag {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { throw ClipStoreError.invalidName }
+    let normalized = trimmed.lowercased()
+    return try await pool.write { database in
+      try database.execute(
+        sql: """
+          INSERT INTO tags (uuid, name, normalized, created_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(COALESCE(parent_id, 0), normalized) DO NOTHING
+          """,
+        arguments: [
+          UUID().uuidString.lowercased(), trimmed, normalized,
+          Date.now.millisecondsSince1970,
+        ]
+      )
+      guard
+        let row = try Row.fetchOne(
+          database,
+          sql: "SELECT uuid, name FROM tags WHERE parent_id IS NULL AND normalized = ?",
+          arguments: [normalized]
+        )
+      else {
+        throw ClipStoreError.missingSavedClip
+      }
+      let rawID: String = row["uuid"]
+      let tagName: String = row["name"]
+      guard let id = UUID(uuidString: rawID) else {
+        throw ClipStoreError.missingSavedClip
+      }
+      return ClipTag(id: id, name: tagName)
+    }
+  }
+
+  func tagClip(id: UUID, tag: String) async throws {
+    let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { throw ClipStoreError.invalidName }
+    let clipTag = try await getOrCreateTag(name: trimmed)
+    try await pool.write { database in
+      let clipRowID = try Self.clipRowID(id: id, database: database)
+      guard
+        let tagRowID = try Int64.fetchOne(
+          database,
+          sql: "SELECT id FROM tags WHERE uuid = ?",
+          arguments: [clipTag.id.uuidString.lowercased()]
+        )
+      else {
+        throw ClipStoreError.missingSavedClip
+      }
+      try database.execute(
+        sql: """
+          INSERT INTO clip_tags (clip_id, tag_id) VALUES (?, ?)
+          ON CONFLICT(clip_id, tag_id) DO NOTHING
+          """,
+        arguments: [clipRowID, tagRowID]
+      )
+    }
+  }
+
+  func untagClip(id: UUID, tag: String) async throws {
+    let normalized = tag.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    try await pool.write { database in
+      try database.execute(
+        sql: """
+          DELETE FROM clip_tags
+          WHERE clip_id = (SELECT id FROM clips WHERE uuid = ?)
+            AND tag_id IN (SELECT id FROM tags WHERE normalized = ?)
+          """,
+        arguments: [id.uuidString.lowercased(), normalized]
+      )
+    }
+  }
+
+  func tags(for id: UUID) async throws -> [ClipTag] {
+    try await pool.read { database in
+      let rows = try Row.fetchAll(
+        database,
+        sql: """
+          SELECT t.uuid, t.name FROM tags t
+          JOIN clip_tags ON clip_tags.tag_id = t.id
+          JOIN clips c ON c.id = clip_tags.clip_id
+          WHERE c.uuid = ? AND c.deleted_at IS NULL
+          ORDER BY t.normalized
+          """,
+        arguments: [id.uuidString.lowercased()]
+      )
+      return try rows.map { row in
+        let rawID: String = row["uuid"]
+        guard let tagID = UUID(uuidString: rawID) else {
+          throw ClipStoreError.corruptClipIdentifier(rawID)
+        }
+        let tagName: String = row["name"]
+        return ClipTag(id: tagID, name: tagName)
+      }
+    }
+  }
+
+  func deleteTag(id: UUID) async throws {
+    try await pool.write { database in
+      try database.execute(
+        sql: "DELETE FROM tags WHERE uuid = ?",
+        arguments: [id.uuidString.lowercased()]
+      )
+    }
+  }
+
+  // MARK: - Saved queries
+
+  func saveQuery(name: String, queryText: String, at date: Date) async throws -> SavedQuery {
+    let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedQuery = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedName.isEmpty, !trimmedQuery.isEmpty else {
+      throw ClipStoreError.invalidName
+    }
+    let id = UUID()
+    let milliseconds = date.millisecondsSince1970
+    try await pool.write { database in
+      try database.execute(
+        sql: """
+          INSERT INTO saved_queries (
+              uuid, name, query_version, query_text, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?)
+          """,
+        arguments: [
+          id.uuidString.lowercased(), trimmedName, SavedQuery.currentVersion,
+          trimmedQuery, milliseconds, milliseconds,
+        ]
+      )
+    }
+    return SavedQuery(
+      id: id, name: trimmedName, queryText: trimmedQuery,
+      createdAt: date, updatedAt: date
+    )
+  }
+
+  func renameQuery(id: UUID, name: String, at date: Date) async throws {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { throw ClipStoreError.invalidName }
+    try await pool.write { database in
+      try database.execute(
+        sql: """
+          UPDATE saved_queries SET name = ?, updated_at = ?
+          WHERE uuid = ? AND deleted_at IS NULL
+          """,
+        arguments: [trimmed, date.millisecondsSince1970, id.uuidString.lowercased()]
+      )
+    }
+  }
+
+  func deleteQuery(id: UUID) async throws {
+    try await pool.write { database in
+      try database.execute(
+        sql: "DELETE FROM saved_queries WHERE uuid = ?",
+        arguments: [id.uuidString.lowercased()]
+      )
+    }
+  }
+
+  func listQueries() async throws -> [SavedQuery] {
+    try await pool.read { database in
+      let rows = try Row.fetchAll(
+        database,
+        sql: """
+          SELECT uuid, name, query_version, query_text, created_at, updated_at
+          FROM saved_queries
+          WHERE deleted_at IS NULL
+          ORDER BY name COLLATE NOCASE, id
+          """
+      )
+      return try rows.map { row in
+        let rawID: String = row["uuid"]
+        guard let queryID = UUID(uuidString: rawID) else {
+          throw ClipStoreError.corruptClipIdentifier(rawID)
+        }
+        let name: String = row["name"]
+        let version: Int = row["query_version"]
+        let queryText: String = row["query_text"]
+        let created: Int64 = row["created_at"]
+        let updated: Int64 = row["updated_at"]
+        return SavedQuery(
+          id: queryID,
+          name: name,
+          queryVersion: version,
+          queryText: queryText,
+          createdAt: Date(millisecondsSince1970: created),
+          updatedAt: Date(millisecondsSince1970: updated)
+        )
+      }
+    }
+  }
+
   func search(_ query: SearchQuery, limit: Int) async throws -> [ClipSummary] {
     try await fetch(query: query, limit: limit)
   }
@@ -543,6 +878,18 @@ struct GRDBClipRepository: ClipRepository, Sendable {
         case .contentType(.file):
           predicates.append("c.kind = ?")
           arguments += [ClipKind.file.rawValue]
+        case .tag(let value):
+          predicates.append(
+            """
+            EXISTS (
+                SELECT 1
+                FROM clip_tags tag_filter
+                JOIN tags tag_names ON tag_names.id = tag_filter.tag_id
+                WHERE tag_filter.clip_id = c.id
+                  AND tag_names.normalized = lower(?)
+            )
+            """)
+          arguments += [value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()]
         case .pinned:
           predicates.append("c.is_pinned = 1")
         case .favorite:
@@ -553,7 +900,7 @@ struct GRDBClipRepository: ClipRepository, Sendable {
         case .before(let date):
           predicates.append("c.created_at < ?")
           arguments += [date.millisecondsSince1970]
-        case .contentType, .tag, .hasOCR:
+        case .contentType, .hasOCR:
           throw ClipStoreError.unsupportedFilter(filter)
         }
       }

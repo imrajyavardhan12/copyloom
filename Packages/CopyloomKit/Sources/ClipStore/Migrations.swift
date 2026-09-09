@@ -169,6 +169,61 @@ enum Migrations {
               ADD COLUMN attachment_id INTEGER REFERENCES attachments(id) ON DELETE CASCADE;
           """)
     }
+
+    migrator.registerMigration("005_organization") { database in
+      try database.execute(
+        sql: """
+          CREATE TABLE collections (
+              id INTEGER PRIMARY KEY,
+              uuid TEXT NOT NULL UNIQUE,
+              name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+              parent_id INTEGER REFERENCES collections(id) ON DELETE SET NULL,
+              position INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              deleted_at INTEGER
+          );
+
+          CREATE TABLE collection_items (
+              collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+              clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+              position INTEGER NOT NULL DEFAULT 0,
+              added_at INTEGER NOT NULL,
+              PRIMARY KEY (collection_id, clip_id)
+          );
+          CREATE INDEX collection_items_order
+              ON collection_items(collection_id, position, added_at, clip_id);
+
+          CREATE TABLE tags (
+              id INTEGER PRIMARY KEY,
+              uuid TEXT NOT NULL UNIQUE,
+              name TEXT NOT NULL,
+              normalized TEXT NOT NULL,
+              parent_id INTEGER REFERENCES tags(id) ON DELETE SET NULL,
+              created_at INTEGER NOT NULL
+          );
+          CREATE UNIQUE INDEX tags_unique_sibling
+              ON tags(COALESCE(parent_id, 0), normalized);
+
+          CREATE TABLE clip_tags (
+              clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+              tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+              PRIMARY KEY (clip_id, tag_id)
+          );
+          CREATE INDEX clip_tags_tag ON clip_tags(tag_id, clip_id);
+
+          CREATE TABLE saved_queries (
+              id INTEGER PRIMARY KEY,
+              uuid TEXT NOT NULL UNIQUE,
+              name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+              query_version INTEGER NOT NULL,
+              query_text TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              deleted_at INTEGER
+          );
+          """)
+    }
     return migrator
   }
 }

@@ -35,6 +35,7 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Search benchmark runner + first 100k-record report: 10 of 13 classes pass (most <1 ms); app-filter pre-resolution and pinned timeline walks fixed from the numbers. Giant-match `bm25` sorts stay open as a product decision. Evidence in `docs/validation/m2-benchmarks.md`.
 - M2 close-out: panel warm-open telemetry (~48 ms + 1 frame), idle cost (~0% CPU, 36 MB), full 17-item acceptance sign-off with deferred list. M2 declared complete.
 - Library shell (M3 slice 1): `LibraryFeature` module with five backed sections, list/cards densities, inspector with copy/pin/favorite/delete, favorite parity in Quick Paste (`⌘F` + row star). Global `⌃⌘L` via a second Carbon registration with pressed-ID dispatch; Library lives in an AppKit window (a menu-tree notification observer misses hotkeys fired with the menu closed).
+- Organization (M3 slice 3): migration 005, collections/tags/saved-queries CRUD, tag search filter, sidebar groups with sheets and context menus, tag editor, drag into collections and text drag-out, re-parsed Smart Collections.
 - Kind detection + type sections (M3 slice 2): capture-time code/color/file classification with prose-safe conservative rules, Files/Code/Colors sections, mono code preview, hex swatches, file reveal. Finder copies persist as path references via `public.file-url` priority (live probe). No highlighting dependency (Splash is Swift-only).
 - Reproducible local/CI scripts and open-source contribution files.
 

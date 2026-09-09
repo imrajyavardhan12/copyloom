@@ -65,6 +65,15 @@ public enum LibraryDensity: String, CaseIterable, Sendable {
   case cards
 }
 
+/// What the content pane shows: a static section, a user collection, or a
+/// re-parsed saved query. Smart queries execute as-is; section filters do
+/// not combine into them.
+public enum LibraryTarget: Hashable, Sendable {
+  case section(LibrarySection)
+  case collection(UUID)
+  case smart(UUID)
+}
+
 @MainActor
 @Observable
 public final class LibraryModel {
@@ -74,6 +83,10 @@ public final class LibraryModel {
   public private(set) var selectedID: UUID?
   public private(set) var isLoading = false
   public private(set) var errorMessage: String?
+  public private(set) var collections: [ClipCollection] = []
+  public private(set) var smartQueries: [SavedQuery] = []
+  public private(set) var activeCollectionID: UUID?
+  public private(set) var activeSmartQueryID: UUID?
 
   @ObservationIgnored private let repository: any ClipRepository
   @ObservationIgnored private let parser: SearchQueryParser
@@ -103,8 +116,170 @@ public final class LibraryModel {
 
   public func select(section: LibrarySection) async {
     self.section = section
+    activeCollectionID = nil
+    activeSmartQueryID = nil
     selectedID = nil
     await refresh()
+  }
+
+  public var title: String {
+    if let activeCollectionID {
+      return collections.first(where: { $0.id == activeCollectionID })?.name
+        ?? "Collection"
+    }
+    if let activeSmartQueryID {
+      return smartQueries.first(where: { $0.id == activeSmartQueryID })?.name
+        ?? "Smart Collection"
+    }
+    return section.title
+  }
+
+  public func selectCollection(id: UUID) async {
+    activeCollectionID = id
+    activeSmartQueryID = nil
+    selectedID = nil
+    await runCollectionListing(id: id)
+  }
+
+  public func selectSmart(id: UUID) async {
+    activeSmartQueryID = id
+    activeCollectionID = nil
+    selectedID = nil
+    await runSmartListing(id: id)
+  }
+
+  public func refreshCollections() async {
+    do {
+      collections = try await repository.listCollections()
+      smartQueries = try await repository.listQueries()
+    } catch {
+      errorMessage = "Unable to load collections"
+    }
+  }
+
+  public func createCollection(name: String) async {
+    do {
+      let collection = try await repository.createCollection(
+        name: name, at: now())
+      await refreshCollections()
+      await selectCollection(id: collection.id)
+      errorMessage = nil
+    } catch {
+      errorMessage = "Unable to create the collection"
+    }
+  }
+
+  public func renameCollection(id: UUID, name: String) async {
+    do {
+      try await repository.renameCollection(id: id, name: name, at: now())
+      await refreshCollections()
+      errorMessage = nil
+    } catch {
+      errorMessage = "Unable to rename the collection"
+    }
+  }
+
+  public func deleteCollection(id: UUID) async {
+    do {
+      try await repository.deleteCollection(id: id)
+      if activeCollectionID == id {
+        activeCollectionID = nil
+        await refresh()
+      }
+      await refreshCollections()
+      errorMessage = nil
+    } catch {
+      errorMessage = "Unable to delete the collection"
+    }
+  }
+
+  public func addToCollection(collectionID: UUID, clipID: UUID) async {
+    do {
+      try await repository.addToCollection(
+        collectionID: collectionID, clipID: clipID, at: now())
+      if activeCollectionID == collectionID {
+        await runCollectionListing(id: collectionID)
+      }
+      errorMessage = nil
+    } catch {
+      errorMessage = "Unable to add to the collection"
+    }
+  }
+
+  public func removeFromCollection(collectionID: UUID, clipID: UUID) async {
+    do {
+      try await repository.removeFromCollection(
+        collectionID: collectionID, clipID: clipID)
+      if activeCollectionID == collectionID {
+        await runCollectionListing(id: collectionID)
+      }
+      errorMessage = nil
+    } catch {
+      errorMessage = "Unable to remove from the collection"
+    }
+  }
+
+  public func saveSmartQuery(name: String, queryText: String) async {
+    let trimmed = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
+    do {
+      // Validate with the real parser before persisting.
+      _ = try parser.parse(
+        trimmed, context: SearchParseContext(now: now(), calendar: calendar))
+      let query = try await repository.saveQuery(
+        name: name, queryText: trimmed, at: now())
+      await refreshCollections()
+      await selectSmart(id: query.id)
+      errorMessage = nil
+    } catch {
+      errorMessage = "That query does not parse"
+    }
+  }
+
+  public func renameSmartQuery(id: UUID, name: String) async {
+    do {
+      try await repository.renameQuery(id: id, name: name, at: now())
+      await refreshCollections()
+      errorMessage = nil
+    } catch {
+      errorMessage = "Unable to rename the Smart Collection"
+    }
+  }
+
+  public func deleteSmartQuery(id: UUID) async {
+    do {
+      try await repository.deleteQuery(id: id)
+      if activeSmartQueryID == id {
+        activeSmartQueryID = nil
+        await refresh()
+      }
+      await refreshCollections()
+      errorMessage = nil
+    } catch {
+      errorMessage = "Unable to delete the Smart Collection"
+    }
+  }
+
+  public func setTags(id: UUID, names: [String]) async {
+    do {
+      let current = Set(try await repository.tags(for: id).map(\.normalized))
+      let desired = Set(
+        names.map {
+          $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }.filter { !$0.isEmpty })
+      for name in desired.subtracting(current) {
+        try await repository.tagClip(id: id, tag: name)
+      }
+      for name in current.subtracting(desired) {
+        try await repository.untagClip(id: id, tag: name)
+      }
+      errorMessage = nil
+    } catch {
+      errorMessage = "Unable to update tags"
+    }
+  }
+
+  public func tags(for id: UUID) async -> [ClipTag] {
+    (try? await repository.tags(for: id)) ?? []
   }
 
   public func setDensity(_ density: LibraryDensity) {
@@ -116,6 +291,11 @@ public final class LibraryModel {
   }
 
   public func search(_ input: String) async {
+    // Search always scopes to the static section library: typing while a
+    // collection or Smart Collection is open returns to section scope
+    // rather than silently intersecting two scopes.
+    activeCollectionID = nil
+    activeSmartQueryID = nil
     let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else {
       await refresh()
@@ -212,14 +392,57 @@ public final class LibraryModel {
     return NSImage(cgImage: thumbnail, size: .zero)
   }
 
+  private func runCollectionListing(id: UUID) async {
+    await replaceItems {
+      try await repository.collectionClips(collectionID: id, limit: 200)
+    }
+  }
+
+  private func runSmartListing(id: UUID) async {
+    guard let saved = smartQueries.first(where: { $0.id == id }) else {
+      activeSmartQueryID = nil
+      await refresh()
+      return
+    }
+    guard saved.queryVersion == SavedQuery.currentVersion else {
+      requestGeneration &+= 1
+      items = []
+      selectedID = nil
+      isLoading = false
+      errorMessage = "This saved query needs an update"
+      return
+    }
+    do {
+      let query = try parser.parse(
+        saved.queryText,
+        context: SearchParseContext(now: now(), calendar: calendar)
+      )
+      await runQuery(text: query.text, filters: query.filters)
+    } catch {
+      requestGeneration &+= 1
+      items = []
+      selectedID = nil
+      isLoading = false
+      errorMessage = "This saved query no longer parses"
+    }
+  }
+
   private func runQuery(text: [SearchTextClause], filters: [SearchFilter]) async {
+    await replaceItems {
+      try await repository.search(
+        SearchQuery(text: text, filters: filters), limit: 200)
+    }
+  }
+
+  private func replaceItems(
+    _ operation: () async throws -> [ClipSummary]
+  ) async {
     requestGeneration &+= 1
     let generation = requestGeneration
     isLoading = true
     errorMessage = nil
     do {
-      let newItems = try await repository.search(
-        SearchQuery(text: text, filters: filters), limit: 200)
+      let newItems = try await operation()
       guard generation == requestGeneration else { return }
       items = newItems
       if let selectedID, !newItems.contains(where: { $0.id == selectedID }) {

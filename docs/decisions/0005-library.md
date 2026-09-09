@@ -117,7 +117,12 @@ matching the parser's existing philosophy.
    and persist as newline-joined POSIX paths — references only, never
    copied bytes. Bookmark-backed `clip_files` still future.)
 3. **Organization**: migration 005, collections/tags CRUD, drag/drop,
-   Smart Collections over saved queries.
+   Smart Collections over saved queries. (Landed: drag-out covers text
+   externally plus all kinds internally; image file drag-out stays a
+   follow-up. Two drop bugs found live: undeclared custom UTIs resolve to
+   nil, and drop-session providers failed to vend ad-hoc data bytes —
+   drops now use a deterministic in-process handoff with the provider as
+   fallback.)
 4. **Searchable OCR**: migration 006, background queue, quarantine UX,
    `has:ocr`, bench-measured FTS rebuild.
 5. **Transforms**: registry, built-ins, Library actions.

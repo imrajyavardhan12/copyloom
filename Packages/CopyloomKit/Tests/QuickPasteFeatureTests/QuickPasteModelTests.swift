@@ -231,6 +231,44 @@ private actor QuickPasteRepositorySpy: ClipRepository {
 
   func purgeDeleted(before cutoff: Date) async throws -> Int { 0 }
 
+  func createCollection(name: String, at date: Date) async throws -> ClipCollection {
+    throw TestError.unexpectedCall
+  }
+
+  func renameCollection(id: UUID, name: String, at date: Date) async throws {}
+
+  func deleteCollection(id: UUID) async throws {}
+
+  func listCollections() async throws -> [ClipCollection] { [] }
+
+  func addToCollection(collectionID: UUID, clipID: UUID, at date: Date) async throws {}
+
+  func removeFromCollection(collectionID: UUID, clipID: UUID) async throws {}
+
+  func collectionClips(collectionID: UUID, limit: Int) async throws -> [ClipSummary] { [] }
+
+  func getOrCreateTag(name: String) async throws -> ClipTag {
+    throw TestError.unexpectedCall
+  }
+
+  func tagClip(id: UUID, tag: String) async throws {}
+
+  func untagClip(id: UUID, tag: String) async throws {}
+
+  func tags(for id: UUID) async throws -> [ClipTag] { [] }
+
+  func deleteTag(id: UUID) async throws {}
+
+  func saveQuery(name: String, queryText: String, at date: Date) async throws -> SavedQuery {
+    throw TestError.unexpectedCall
+  }
+
+  func renameQuery(id: UUID, name: String, at date: Date) async throws {}
+
+  func deleteQuery(id: UUID) async throws {}
+
+  func listQueries() async throws -> [SavedQuery] { [] }
+
   func recordUse(id: UUID, at date: Date) async throws {
     use = Use(id: id, date: date)
   }

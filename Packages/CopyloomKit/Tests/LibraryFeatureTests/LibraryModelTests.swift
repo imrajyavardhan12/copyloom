@@ -118,6 +118,121 @@ struct LibraryModelTests {
     #expect(model.errorMessage == nil)
   }
 
+  @Test("collections create, fill, rename and delete")
+  func collectionsFlow() async throws {
+    let clip = summary(kind: .text)
+    let repository = LibraryRepositorySpy(results: [clip])
+    let model = LibraryModel(repository: repository)
+
+    await model.refreshCollections()
+    #expect(model.collections.isEmpty)
+
+    await model.createCollection(name: "  Work  ")
+    #expect(model.collections.map(\.name) == ["Work"])
+    let collectionID = try #require(model.collections.first?.id)
+    #expect(model.activeCollectionID == collectionID)
+    #expect(model.title == "Work")
+
+    await model.addToCollection(collectionID: collectionID, clipID: clip.id)
+    let reads = await repository.collectionReadsMade()
+    #expect(reads.last == collectionID)
+    #expect(model.items.map(\.id) == [clip.id])
+
+    await model.removeFromCollection(collectionID: collectionID, clipID: clip.id)
+    #expect(model.items.isEmpty)
+
+    await model.renameCollection(id: collectionID, name: "Play")
+    #expect(model.collections.map(\.name) == ["Play"])
+    #expect(model.title == "Play")
+
+    await model.deleteCollection(id: collectionID)
+    #expect(model.collections.isEmpty)
+    #expect(model.activeCollectionID == nil)
+  }
+
+  @Test("smart queries validate, execute and report stale versions")
+  func smartFlow() async throws {
+    let clip = summary(kind: .text)
+    let repository = LibraryRepositorySpy(results: [clip])
+    let model = LibraryModel(repository: repository)
+
+    await model.saveSmartQuery(name: "Safari", queryText: "hello app:Safari")
+    let savedID = try #require(model.smartQueries.first?.id)
+    #expect(model.activeSmartQueryID == savedID)
+    #expect(model.title == "Safari")
+    let queries = await repository.searchQueries()
+    #expect(queries.last?.text == [.term("hello")])
+    #expect(queries.last?.filters == [.application("Safari")])
+
+    await model.saveSmartQuery(name: "Broken", queryText: "app:")
+    #expect(model.errorMessage == "That query does not parse")
+    #expect(model.smartQueries.count == 1)
+
+    await model.renameSmartQuery(id: savedID, name: "Web")
+    #expect(model.smartQueries.map(\.name) == ["Web"])
+
+    await model.deleteSmartQuery(id: savedID)
+    #expect(model.smartQueries.isEmpty)
+    #expect(model.activeSmartQueryID == nil)
+  }
+
+  @Test("stale saved-query versions refuse with guidance")
+  func staleSmartVersion() async throws {
+    let stale = SavedQuery(
+      id: UUID(), name: "Old", queryVersion: 99, queryText: "hello",
+      createdAt: .now, updatedAt: .now
+    )
+    let repository = LibraryRepositorySpy(results: [], presetQueries: [stale])
+    let model = LibraryModel(repository: repository)
+
+    await model.refreshCollections()
+    await model.selectSmart(id: stale.id)
+
+    #expect(model.items.isEmpty)
+    #expect(model.errorMessage == "This saved query needs an update")
+  }
+
+  @Test("unknown smart identifiers fall back to the section")
+  func unknownSmartFallsBack() async throws {
+    let repository = LibraryRepositorySpy(results: [])
+    let model = LibraryModel(repository: repository)
+
+    await model.selectSmart(id: UUID())
+
+    #expect(model.activeSmartQueryID == nil)
+    #expect(await repository.searchQueries().last?.filters == [])
+  }
+
+  @Test("tag edits diff against current tags")
+  func tagDiffing() async throws {
+    let clip = summary(kind: .text)
+    let repository = LibraryRepositorySpy(results: [clip])
+    let model = LibraryModel(repository: repository)
+    await repository.seedTags(id: clip.id, names: ["a", "b"])
+
+    await model.setTags(id: clip.id, names: ["B", " c ", ""])
+
+    let calls = await repository.tagCalls()
+    #expect(calls.tagged.map(\.1) == ["c"])
+    #expect(calls.untagged.map(\.1) == ["a"])
+    #expect(await model.tags(for: clip.id).map(\.normalized).sorted() == ["b", "c"])
+  }
+
+  @Test("searching returns to section scope from collections")
+  func searchClearsActives() async throws {
+    let repository = LibraryRepositorySpy(results: [])
+    let model = LibraryModel(repository: repository)
+
+    await model.createCollection(name: "Work")
+    let collectionID = try #require(model.activeCollectionID)
+    _ = collectionID
+    await model.search("hello")
+
+    #expect(model.activeCollectionID == nil)
+    #expect(model.activeSmartQueryID == nil)
+    #expect(await repository.searchQueries().last?.text == [.term("hello")])
+  }
+
   private func summary(kind: ClipKind, isFavorite: Bool = false, isPinned: Bool = false)
     -> ClipSummary
   {
@@ -135,9 +250,18 @@ private actor LibraryRepositorySpy: ClipRepository {
   private var pins: [(UUID, Bool)] = []
   private var favorites: [(UUID, Bool)] = []
   private var deleted: [UUID] = []
+  private var collections: [ClipCollection]
+  private var members: [UUID: Set<UUID>] = [:]
+  private var tagMap: [UUID: Set<String>] = [:]
+  private var saved: [SavedQuery]
+  private var tagged: [(UUID, String)] = []
+  private var untagged: [(UUID, String)] = []
+  private var collectionReads: [UUID] = []
 
-  init(results: [ClipSummary]) {
+  init(results: [ClipSummary], presetQueries: [SavedQuery] = []) {
     self.results = results
+    self.collections = []
+    self.saved = presetQueries
   }
 
   func saveAcceptedText(_ clip: AcceptedTextClip) async throws -> ClipSummary {
@@ -166,6 +290,92 @@ private actor LibraryRepositorySpy: ClipRepository {
 
   func purgeDeleted(before cutoff: Date) async throws -> Int { 0 }
 
+  func createCollection(name: String, at date: Date) async throws -> ClipCollection {
+    // Mirrors the repository contract: surrounding whitespace is trimmed.
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    let collection = ClipCollection(
+      id: UUID(), name: trimmed, createdAt: date, updatedAt: date)
+    collections.append(collection)
+    return collection
+  }
+
+  func renameCollection(id: UUID, name: String, at date: Date) async throws {
+    guard let index = collections.firstIndex(where: { $0.id == id }) else { return }
+    collections[index] = ClipCollection(
+      id: id, name: name, createdAt: collections[index].createdAt, updatedAt: date)
+  }
+
+  func deleteCollection(id: UUID) async throws {
+    collections.removeAll(where: { $0.id == id })
+    members[id] = nil
+  }
+
+  func listCollections() async throws -> [ClipCollection] { collections }
+
+  func addToCollection(collectionID: UUID, clipID: UUID, at date: Date) async throws {
+    members[collectionID, default: []].insert(clipID)
+  }
+
+  func removeFromCollection(collectionID: UUID, clipID: UUID) async throws {
+    members[collectionID]?.remove(clipID)
+  }
+
+  func collectionClips(collectionID: UUID, limit: Int) async throws -> [ClipSummary] {
+    collectionReads.append(collectionID)
+    let allowed = members[collectionID] ?? []
+    return results.filter { allowed.contains($0.id) }.prefix(limit).map { $0 }
+  }
+
+  func collectionReadsMade() -> [UUID] { collectionReads }
+
+  func getOrCreateTag(name: String) async throws -> ClipTag {
+    ClipTag(id: UUID(), name: name)
+  }
+
+  func tagClip(id: UUID, tag: String) async throws {
+    tagged.append((id, tag))
+    tagMap[id, default: []].insert(tag)
+  }
+
+  func untagClip(id: UUID, tag: String) async throws {
+    untagged.append((id, tag))
+    tagMap[id]?.remove(tag)
+  }
+
+  func tags(for id: UUID) async throws -> [ClipTag] {
+    (tagMap[id] ?? []).sorted().map { ClipTag(id: UUID(), name: $0) }
+  }
+
+  func tagCalls() -> (tagged: [(UUID, String)], untagged: [(UUID, String)]) {
+    (tagged, untagged)
+  }
+
+  func seedTags(id: UUID, names: Set<String>) {
+    tagMap[id] = names
+  }
+
+  func deleteTag(id: UUID) async throws {}
+
+  func saveQuery(name: String, queryText: String, at date: Date) async throws -> SavedQuery {
+    let query = SavedQuery(
+      id: UUID(), name: name, queryText: queryText, createdAt: date, updatedAt: date)
+    saved.append(query)
+    return query
+  }
+
+  func renameQuery(id: UUID, name: String, at date: Date) async throws {
+    guard let index = saved.firstIndex(where: { $0.id == id }) else { return }
+    saved[index] = SavedQuery(
+      id: id, name: name, queryVersion: saved[index].queryVersion,
+      queryText: saved[index].queryText, createdAt: saved[index].createdAt,
+      updatedAt: date)
+  }
+
+  func deleteQuery(id: UUID) async throws {
+    saved.removeAll(where: { $0.id == id })
+  }
+
+  func listQueries() async throws -> [SavedQuery] { saved }
   func recordUse(id: UUID, at date: Date) async throws {}
 
   func delete(id: UUID, at date: Date) async throws {

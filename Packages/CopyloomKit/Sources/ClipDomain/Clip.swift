@@ -149,3 +149,69 @@ public struct ClipAttachment: Equatable, Sendable {
     self.relativePath = relativePath
   }
 }
+
+/// A user collection: an ordered bucket of clip references. Payloads are
+/// never copied; membership is rows in `collection_items`.
+public struct ClipCollection: Equatable, Identifiable, Sendable {
+  public let id: UUID
+  public let name: String
+  public let parentID: UUID?
+  public let createdAt: Date
+  public let updatedAt: Date
+
+  public init(
+    id: UUID,
+    name: String,
+    parentID: UUID? = nil,
+    createdAt: Date,
+    updatedAt: Date
+  ) {
+    self.id = id
+    self.name = name
+    self.parentID = parentID
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+  }
+}
+
+/// A tag with its normalized (lowercased, trimmed) identity.
+public struct ClipTag: Equatable, Identifiable, Sendable {
+  public let id: UUID
+  public let name: String
+  public let normalized: String
+
+  public init(id: UUID, name: String) {
+    self.id = id
+    self.name = name
+    self.normalized = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+  }
+}
+
+/// A saved search backing a Smart Collection. The canonical query text plus
+/// parser version are stored — never generated SQL — and re-parsed at open.
+public struct SavedQuery: Equatable, Identifiable, Sendable {
+  public static let currentVersion = 1
+
+  public let id: UUID
+  public let name: String
+  public let queryVersion: Int
+  public let queryText: String
+  public let createdAt: Date
+  public let updatedAt: Date
+
+  public init(
+    id: UUID,
+    name: String,
+    queryVersion: Int = SavedQuery.currentVersion,
+    queryText: String,
+    createdAt: Date,
+    updatedAt: Date
+  ) {
+    self.id = id
+    self.name = name
+    self.queryVersion = queryVersion
+    self.queryText = queryText
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+  }
+}
