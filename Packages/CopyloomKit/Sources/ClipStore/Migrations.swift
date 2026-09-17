@@ -1,3 +1,4 @@
+import Foundation
 import GRDB
 
 enum Migrations {
@@ -223,6 +224,73 @@ enum Migrations {
               deleted_at INTEGER
           );
           """)
+    }
+
+    // M3 slice 4 (ADR-0005 §3-4): searchable OCR. Adds ONLY the `ocr`
+    // column to search_documents plus the FTS rebuild (002 is the
+    // template), plus the crash-resumable `image_ocr_jobs` queue whose
+    // status is the pending/indexed/withheld tri-state. Titles, notes,
+    // filenames and the rest of the schema-doc projection arrive with
+    // their own producing features per the minimal-migration rule.
+    migrator.registerMigration("006_ocr_search") { database in
+      try database.execute(
+        sql: """
+          ALTER TABLE search_documents
+              ADD COLUMN ocr TEXT NOT NULL DEFAULT '';
+
+          DROP TRIGGER search_documents_ai;
+          DROP TRIGGER search_documents_ad;
+          DROP TRIGGER search_documents_au;
+          DROP TABLE clip_fts;
+
+          CREATE VIRTUAL TABLE clip_fts USING fts5(
+              body,
+              ocr,
+              applications,
+              content='search_documents',
+              content_rowid='clip_id',
+              tokenize='unicode61 remove_diacritics 2',
+              prefix='2 3 4'
+          );
+
+          CREATE TRIGGER search_documents_ai AFTER INSERT ON search_documents BEGIN
+              INSERT INTO clip_fts(rowid, body, ocr, applications)
+              VALUES (new.clip_id, new.body, new.ocr, new.applications);
+          END;
+
+          CREATE TRIGGER search_documents_ad AFTER DELETE ON search_documents BEGIN
+              INSERT INTO clip_fts(clip_fts, rowid, body, ocr, applications)
+              VALUES ('delete', old.clip_id, old.body, old.ocr, old.applications);
+          END;
+
+          CREATE TRIGGER search_documents_au AFTER UPDATE ON search_documents BEGIN
+              INSERT INTO clip_fts(clip_fts, rowid, body, ocr, applications)
+              VALUES ('delete', old.clip_id, old.body, old.ocr, old.applications);
+              INSERT INTO clip_fts(rowid, body, ocr, applications)
+              VALUES (new.clip_id, new.body, new.ocr, new.applications);
+          END;
+
+          INSERT INTO clip_fts(clip_fts) VALUES ('rebuild');
+
+          CREATE TABLE image_ocr_jobs (
+              clip_id INTEGER PRIMARY KEY REFERENCES clips(id) ON DELETE CASCADE,
+              status INTEGER NOT NULL DEFAULT 0 CHECK (status IN (0, 1, 2)),
+              attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+              updated_at INTEGER NOT NULL
+          );
+          CREATE INDEX image_ocr_jobs_pending
+              ON image_ocr_jobs(status, updated_at, clip_id);
+          """)
+      // Backfill: every live image clip awaits its first background scan.
+      // Status 0 is OCRJobStatus.pending; kind 2 is ClipKind.image.
+      let nowMilliseconds = Int64((Date.now.timeIntervalSince1970 * 1_000).rounded())
+      try database.execute(
+        sql: """
+          INSERT OR IGNORE INTO image_ocr_jobs (clip_id, status, attempts, updated_at)
+          SELECT id, 0, 0, ? FROM clips WHERE kind = 2 AND deleted_at IS NULL
+          """,
+        arguments: [nowMilliseconds]
+      )
     }
     return migrator
   }

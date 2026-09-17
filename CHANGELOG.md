@@ -37,6 +37,7 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 - Library shell (M3 slice 1): `LibraryFeature` module with five backed sections, list/cards densities, inspector with copy/pin/favorite/delete, favorite parity in Quick Paste (`⌘F` + row star). Global `⌃⌘L` via a second Carbon registration with pressed-ID dispatch; Library lives in an AppKit window (a menu-tree notification observer misses hotkeys fired with the menu closed).
 - Organization (M3 slice 3): migration 005, collections/tags/saved-queries CRUD, tag search filter, sidebar groups with sheets and context menus, tag editor, drag into collections and text drag-out, re-parsed Smart Collections.
 - Kind detection + type sections (M3 slice 2): capture-time code/color/file classification with prose-safe conservative rules, Files/Code/Colors sections, mono code preview, hex swatches, file reveal. Finder copies persist as path references via `public.file-url` priority (live probe). No highlighting dependency (Splash is Swift-only).
+- Searchable OCR (M3 slice 4): migration 006 (`ocr` column + FTS rebuild + `image_ocr_jobs` queue), serial background OCR with crash-resumable pending/indexed/withheld states, quarantine UX (withheld banner + one-tap delete, pixels stay, never content-searchable), `has:ocr` filter, 0.71 s FTS rebuild at 100k rows. Evidence in `docs/validation/m3-ocr.md`; owner live evidence pending.
 - Reproducible local/CI scripts and open-source contribution files.
 
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main

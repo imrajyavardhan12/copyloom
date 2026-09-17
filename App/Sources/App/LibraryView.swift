@@ -417,6 +417,7 @@ private struct LibraryCard: View {
 private struct InspectorView: View {
   let model: LibraryModel
   @State private var copyError = false
+  @State private var ocrStatus: OCRJobStatus?
 
   var body: some View {
     if let clip = model.selectedClip {
@@ -437,6 +438,7 @@ private struct InspectorView: View {
             }
             .buttonStyle(.link)
           }
+          ocrBanner(for: clip)
           if clip.kind == .image {
             ClipThumbnail(
               load: { await model.loadThumbnail(for: clip) },
@@ -494,12 +496,61 @@ private struct InspectorView: View {
         }
         .padding(16)
       }
+      .task(id: clip.id) {
+        ocrStatus = await model.ocrStatus(for: clip.id)
+      }
     } else {
       ContentUnavailableView(
         "No selection",
         systemImage: "sidebar.right",
         description: Text("Select a clip to preview it.")
       )
+    }
+  }
+
+  /// Quarantine UX (M3 slice 4): a withheld image keeps its pixels but its
+  /// text never enters the index, so the inspector says so and offers the
+  /// one-tap delete. Pending shows an indexing note; indexed needs none.
+  @ViewBuilder
+  private func ocrBanner(for clip: ClipSummary) -> some View {
+    if clip.kind == .image {
+      switch ocrStatus {
+      case .withheld:
+        HStack(spacing: 8) {
+          Image(systemName: "eye.slash.fill")
+            .foregroundStyle(.orange)
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Image text withheld")
+              .font(.callout)
+              .bold()
+            Text("Not searchable. The image stays until you delete it.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+          Spacer()
+          Button("Delete", role: .destructive) {
+            Task { await model.delete(id: clip.id) }
+          }
+          .buttonStyle(.link)
+        }
+        .padding(10)
+        .background(
+          Color.orange.opacity(0.12),
+          in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .accessibilityLabel("Image text withheld, not searchable")
+      case .pending:
+        HStack(spacing: 6) {
+          ProgressView()
+            .controlSize(.small)
+          Text("Indexing image text…")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .accessibilityLabel("Indexing image text")
+      case .indexed, nil:
+        EmptyView()
+      }
     }
   }
 

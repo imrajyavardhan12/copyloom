@@ -360,6 +360,13 @@ public final class LibraryModel {
     try? await repository.attachmentData(for: id)
   }
 
+  /// Quarantine state for one clip: nil means no OCR job (non-images, or
+  /// jobs shed on delete). The inspector renders `.withheld` as the
+  /// quarantine banner; `.pending` as an indexing note.
+  public func ocrStatus(for id: UUID) async -> OCRJobStatus? {
+    try? await repository.ocrJob(for: id)?.status
+  }
+
   public func attachmentMeta(for id: UUID) async throws -> ClipAttachment? {
     try await repository.attachment(for: id)
   }

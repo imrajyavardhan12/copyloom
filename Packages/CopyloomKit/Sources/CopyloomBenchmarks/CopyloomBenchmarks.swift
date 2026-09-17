@@ -41,6 +41,7 @@ private struct Report: Encodable {
   var dedupPerSecond: Double
   var retentionExpireSeconds: Double
   var retentionPurgeSeconds: Double
+  var ftsRebuildSeconds: Double
   var databaseBytes: Int
   var walBytes: Int
   var queries: [QueryStats]
@@ -199,6 +200,12 @@ private enum CopyloomBenchmarks {
     }
     let loadSeconds = Double(nowNanoseconds() - loadStart) / 1_000_000_000
 
+    // Migration-006 cost at full corpus size: the same full-index rebuild
+    // the 006 migration runs when the `ocr` column lands.
+    let rebuildStart = nowNanoseconds()
+    try await repository.rebuildSearchIndex()
+    let rebuildSeconds = Double(nowNanoseconds() - rebuildStart) / 1_000_000_000
+
     // Search matrix: warm-up plus measured samples per class.
     var queryStats: [QueryStats] = []
     var checksum = 0
@@ -330,6 +337,7 @@ private enum CopyloomBenchmarks {
       dedupPerSecond: 1_000 / dedupSeconds,
       retentionExpireSeconds: expireSeconds,
       retentionPurgeSeconds: purgeSeconds,
+      ftsRebuildSeconds: rebuildSeconds,
       databaseBytes: fileSize(at: databaseURL),
       walBytes: fileSize(at: walURL),
       queries: queryStats,
@@ -354,7 +362,7 @@ private enum CopyloomBenchmarks {
       )
     }
     print(
-      "concurrent-p95=\(String(format: "%.2f", report.concurrentP95Ms))ms rss=\(peakRSS / 1_048_576)MiB db=\(report.databaseBytes / 1_048_576)MiB verdict30ms=\(report.verdict30ms) checksum=\(checksum)"
+      "concurrent-p95=\(String(format: "%.2f", report.concurrentP95Ms))ms rss=\(peakRSS / 1_048_576)MiB db=\(report.databaseBytes / 1_048_576)MiB fts-rebuild=\(String(format: "%.2f", report.ftsRebuildSeconds))s verdict30ms=\(report.verdict30ms) checksum=\(checksum)"
     )
   }
 }

@@ -29,6 +29,7 @@ struct AppDatabaseTests {
         "003_clip_lifecycle_actions",
         "004_image_attachments",
         "005_organization",
+        "006_ocr_search",
       ]
     )
   }
@@ -105,6 +106,7 @@ struct AppDatabaseTests {
         "003_clip_lifecycle_actions",
         "004_image_attachments",
         "005_organization",
+        "006_ocr_search",
       ]
     )
   }
@@ -141,6 +143,7 @@ struct AppDatabaseTests {
         "003_clip_lifecycle_actions",
         "004_image_attachments",
         "005_organization",
+        "006_ocr_search",
       ]
     )
   }

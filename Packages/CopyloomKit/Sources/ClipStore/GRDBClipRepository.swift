@@ -289,6 +289,18 @@ struct GRDBClipRepository: ClipRepository, Sendable {
         arguments: [clipRowID, "", capturedAt, applicationSearchText]
       )
 
+      // Every stored image awaits one background OCR scan (M3 slice 4).
+      // Duplicates collapsing onto an existing clip keep its queue state —
+      // indexed stays indexed, quarantined stays quarantined.
+      try database.execute(
+        sql: """
+          INSERT INTO image_ocr_jobs (clip_id, status, attempts, updated_at)
+          VALUES (?, ?, 0, ?)
+          ON CONFLICT(clip_id) DO NOTHING
+          """,
+        arguments: [clipRowID, OCRJobStatus.pending.rawValue, capturedAt]
+      )
+
       return try Self.fetchSummary(clipRowID: clipRowID, database: database)
     }
   }
@@ -383,6 +395,11 @@ struct GRDBClipRepository: ClipRepository, Sendable {
         sql: "DELETE FROM search_documents WHERE clip_id = ?",
         arguments: [rowID]
       )
+      // Shed queue state with the clip: re-captures re-enqueue on save.
+      try database.execute(
+        sql: "DELETE FROM image_ocr_jobs WHERE clip_id = ?",
+        arguments: [rowID]
+      )
     }
   }
 
@@ -407,6 +424,14 @@ struct GRDBClipRepository: ClipRepository, Sendable {
       try database.execute(
         sql: """
           DELETE FROM search_documents
+          WHERE clip_id IN (SELECT id FROM clips WHERE deleted_at IS NOT NULL)
+          """,
+        arguments: []
+      )
+      // Expired clips leave the OCR queue with their search documents.
+      try database.execute(
+        sql: """
+          DELETE FROM image_ocr_jobs
           WHERE clip_id IN (SELECT id FROM clips WHERE deleted_at IS NOT NULL)
           """,
         arguments: []
@@ -801,6 +826,221 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     try await fetch(query: query, limit: limit)
   }
 
+  // MARK: - Searchable OCR
+
+  func ocrJob(for id: UUID) async throws -> OCRJobInfo? {
+    try await pool.read { database in
+      guard
+        let row = try Row.fetchOne(
+          database,
+          sql: """
+            SELECT j.status AS status, j.attempts AS attempts
+            FROM image_ocr_jobs j
+            JOIN clips c ON c.id = j.clip_id
+            WHERE c.uuid = ?
+            """,
+          arguments: [id.uuidString.lowercased()]
+        )
+      else {
+        return nil
+      }
+      let statusRaw: Int = row["status"]
+      guard let status = OCRJobStatus(rawValue: statusRaw) else { return nil }
+      let attempts: Int = row["attempts"]
+      return OCRJobInfo(status: status, attempts: attempts)
+    }
+  }
+
+  func claimNextPendingOCRJob() async throws -> ClaimedOCRJob? {
+    try await pool.read { database in
+      guard
+        let row = try Row.fetchOne(
+          database,
+          sql: """
+            SELECT c.uuid AS uuid, j.attempts AS attempts
+            FROM image_ocr_jobs j
+            JOIN clips c ON c.id = j.clip_id
+            WHERE j.status = ? AND c.deleted_at IS NULL
+            ORDER BY j.updated_at, j.clip_id
+            LIMIT 1
+            """,
+          arguments: [OCRJobStatus.pending.rawValue]
+        )
+      else {
+        return nil
+      }
+      let rawID: String = row["uuid"]
+      guard let clipID = UUID(uuidString: rawID) else {
+        throw ClipStoreError.corruptClipIdentifier(rawID)
+      }
+      let attempts: Int = row["attempts"]
+      return ClaimedOCRJob(clipID: clipID, attempts: attempts)
+    }
+  }
+
+  func pendingOCRJobCount() async throws -> Int {
+    try await pool.read { database in
+      try Int.fetchOne(
+        database,
+        sql: """
+          SELECT COUNT(*)
+          FROM image_ocr_jobs j
+          JOIN clips c ON c.id = j.clip_id
+          WHERE j.status = ? AND c.deleted_at IS NULL
+          """,
+        arguments: [OCRJobStatus.pending.rawValue]
+      ) ?? 0
+    }
+  }
+
+  func markOCRIndexed(clipID: UUID, text: String, at date: Date) async throws {
+    let milliseconds = date.millisecondsSince1970
+    try await pool.write { database in
+      guard
+        let clipRowID = try Int64.fetchOne(
+          database,
+          sql: "SELECT id FROM clips WHERE uuid = ?",
+          arguments: [clipID.uuidString.lowercased()]
+        )
+      else {
+        throw ClipStoreError.clipNotFound(clipID)
+      }
+      let deletedAt: Int64? = try Int64.fetchOne(
+        database,
+        sql: "SELECT deleted_at FROM clips WHERE id = ?",
+        arguments: [clipRowID]
+      )
+      guard deletedAt == nil else {
+        // Lost a race with a user delete: shed the job, index nothing.
+        try database.execute(
+          sql: "DELETE FROM image_ocr_jobs WHERE clip_id = ?",
+          arguments: [clipRowID]
+        )
+        return
+      }
+      try database.execute(
+        sql: """
+          UPDATE search_documents SET ocr = ?, updated_at = ?
+          WHERE clip_id = ?
+          """,
+        arguments: [text, milliseconds, clipRowID]
+      )
+      if database.changesCount == 0 {
+        // Defensive: every clip owns a search document, but a fallback
+        // upsert keeps one missed write from wedging the queue forever.
+        try database.execute(
+          sql: """
+            INSERT INTO search_documents (clip_id, body, ocr, applications, updated_at)
+            VALUES (?, '', ?, '', ?)
+            ON CONFLICT(clip_id) DO UPDATE SET
+                ocr = excluded.ocr,
+                updated_at = excluded.updated_at
+            """,
+          arguments: [clipRowID, text, milliseconds]
+        )
+      }
+      // Attempts are history, not reset: a job that errored twice then
+      // scanned clean keeps its count.
+      try database.execute(
+        sql: """
+          UPDATE image_ocr_jobs
+          SET status = ?, updated_at = ?
+          WHERE clip_id = ?
+          """,
+        arguments: [OCRJobStatus.indexed.rawValue, milliseconds, clipRowID]
+      )
+      if database.changesCount == 0 {
+        try database.execute(
+          sql: """
+            INSERT OR IGNORE INTO image_ocr_jobs (clip_id, status, attempts, updated_at)
+            VALUES (?, ?, 0, ?)
+            """,
+          arguments: [clipRowID, OCRJobStatus.indexed.rawValue, milliseconds]
+        )
+      }
+    }
+  }
+
+  func markOCRWithheld(clipID: UUID, at date: Date) async throws {
+    let milliseconds = date.millisecondsSince1970
+    try await pool.write { database in
+      guard
+        let clipRowID = try Int64.fetchOne(
+          database,
+          sql: "SELECT id FROM clips WHERE uuid = ?",
+          arguments: [clipID.uuidString.lowercased()]
+        )
+      else {
+        throw ClipStoreError.clipNotFound(clipID)
+      }
+      // Quarantine withholds entirely: any previously indexed text is
+      // cleared so sensitive findings never linger in FTS.
+      try database.execute(
+        sql: """
+          UPDATE search_documents SET ocr = '', updated_at = ?
+          WHERE clip_id = ?
+          """,
+        arguments: [milliseconds, clipRowID]
+      )
+      try database.execute(
+        sql: """
+          UPDATE image_ocr_jobs
+          SET status = ?, updated_at = ?
+          WHERE clip_id = ?
+          """,
+        arguments: [OCRJobStatus.withheld.rawValue, milliseconds, clipRowID]
+      )
+      if database.changesCount == 0 {
+        try database.execute(
+          sql: """
+            INSERT OR IGNORE INTO image_ocr_jobs (clip_id, status, attempts, updated_at)
+            VALUES (?, ?, 0, ?)
+            """,
+          arguments: [clipRowID, OCRJobStatus.withheld.rawValue, milliseconds]
+        )
+      }
+    }
+  }
+
+  func recordOCRAttempt(clipID: UUID, at date: Date) async throws -> Int {
+    let milliseconds = date.millisecondsSince1970
+    return try await pool.write { database in
+      guard
+        let clipRowID = try Int64.fetchOne(
+          database,
+          sql: "SELECT id FROM clips WHERE uuid = ?",
+          arguments: [clipID.uuidString.lowercased()]
+        )
+      else {
+        throw ClipStoreError.clipNotFound(clipID)
+      }
+      try database.execute(
+        sql: """
+          UPDATE image_ocr_jobs
+          SET attempts = attempts + 1, updated_at = ?
+          WHERE clip_id = ?
+          """,
+        arguments: [milliseconds, clipRowID]
+      )
+      guard
+        let attempts = try Int.fetchOne(
+          database,
+          sql: "SELECT attempts FROM image_ocr_jobs WHERE clip_id = ?",
+          arguments: [clipRowID]
+        )
+      else {
+        throw ClipStoreError.missingSavedClip
+      }
+      return attempts
+    }
+  }
+
+  func rebuildSearchIndex() async throws {
+    try await pool.write { database in
+      try database.execute(sql: "INSERT INTO clip_fts(clip_fts) VALUES('rebuild')")
+    }
+  }
+
   private func fetch(query: SearchQuery, limit: Int) async throws -> [ClipSummary] {
     try validate(limit: limit)
     let hasTextQuery = !query.text.isEmpty
@@ -900,7 +1140,20 @@ struct GRDBClipRepository: ClipRepository, Sendable {
         case .before(let date):
           predicates.append("c.created_at < ?")
           arguments += [date.millisecondsSince1970]
-        case .contentType, .hasOCR:
+        case .hasOCR:
+          // Indexed OCR text only. Quarantined (withheld) and unscanned
+          // images keep ocr == '', so they never match content queries or
+          // this filter while staying findable by type:/app:.
+          predicates.append(
+            """
+            EXISTS (
+                SELECT 1
+                FROM search_documents ocr_filter
+                WHERE ocr_filter.clip_id = c.id
+                  AND ocr_filter.ocr <> ''
+            )
+            """)
+        case .contentType:
           throw ClipStoreError.unsupportedFilter(filter)
         }
       }

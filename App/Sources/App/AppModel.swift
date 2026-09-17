@@ -29,6 +29,7 @@ final class AppModel {
   @ObservationIgnored private var libraryWindowController: LibraryWindowController?
   @ObservationIgnored private var globalHotKey: GlobalHotKey?
   @ObservationIgnored private var libraryHotKey: GlobalHotKey?
+  @ObservationIgnored private var ocrTask: Task<Void, Never>?
   private(set) var libraryModel: LibraryModel?
 
   init(defaults: UserDefaults = .standard) {
@@ -82,6 +83,16 @@ final class AppModel {
       let libraryModel = LibraryModel(repository: database.repository)
       self.libraryModel = libraryModel
       self.libraryWindowController = LibraryWindowController(model: libraryModel)
+      // M3 slice 4: serial background OCR over stored images. Idle
+      // priority, cancellable, crash-resumable via image_ocr_jobs; the
+      // 5 s poll also picks up captures made after launch within seconds.
+      let ocrQueue = ImageOCRQueue(
+        repository: database.repository,
+        recognizer: VisionTextRecognizer()
+      )
+      ocrTask = Task.detached(priority: .background) {
+        await ocrQueue.runUntilCancelled(pollInterval: .seconds(5))
+      }
       do {
         globalHotKey = try GlobalHotKey { [weak self] in
           self?.toggleQuickPaste()
@@ -323,6 +334,8 @@ final class AppModel {
   }
 
   func shutdown() {
+    ocrTask?.cancel()
+    ocrTask = nil
     monitor?.stop()
     quickPasteController?.hide()
     libraryWindowController?.hide()

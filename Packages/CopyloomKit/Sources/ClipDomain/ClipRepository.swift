@@ -69,4 +69,47 @@ public protocol ClipRepository: Sendable {
   func recent(limit: Int) async throws -> [ClipSummary]
 
   func search(_ query: SearchQuery, limit: Int) async throws -> [ClipSummary]
+
+  // MARK: - Searchable OCR (M3 slice 4)
+
+  /// Queue state for one clip, or nil when the clip has no OCR job
+  /// (every non-image clip, or a clip whose job was cleaned up on delete).
+  func ocrJob(for id: UUID) async throws -> OCRJobInfo?
+
+  /// Oldest pending job over live clips, or nil when the queue is drained.
+  /// Crash-resumable: unclaimed rows stay pending across restarts.
+  func claimNextPendingOCRJob() async throws -> ClaimedOCRJob?
+
+  /// Pending-job depth over live clips. Powers queue telemetry, not search.
+  func pendingOCRJobCount() async throws -> Int
+
+  /// Safe path: stores OCR text in `search_documents.ocr` (FTS follows via
+  /// triggers) and marks the job indexed.
+  func markOCRIndexed(clipID: UUID, text: String, at date: Date) async throws
+
+  /// Quarantine path: OCR text is withheld entirely (any indexed text is
+  /// cleared), pixels stay, job marked withheld.
+  func markOCRWithheld(clipID: UUID, at date: Date) async throws
+
+  /// Error path: bumps the attempt count, keeps the job pending.
+  /// Returns the new attempt count so the caller can bound retries.
+  @discardableResult
+  func recordOCRAttempt(clipID: UUID, at date: Date) async throws -> Int
+
+  /// Full FTS rebuild (`INSERT INTO clip_fts(clip_fts) VALUES('rebuild')`).
+  /// Repair path and the bench-measured rebuild behind migration 006.
+  func rebuildSearchIndex() async throws
+}
+
+// Default OCR behavior for in-memory fakes and spies: no jobs, no-ops.
+// The GRDB repository overrides every method below with real storage.
+extension ClipRepository {
+  public func ocrJob(for id: UUID) async throws -> OCRJobInfo? { nil }
+  public func claimNextPendingOCRJob() async throws -> ClaimedOCRJob? { nil }
+  public func pendingOCRJobCount() async throws -> Int { 0 }
+  public func markOCRIndexed(clipID: UUID, text: String, at date: Date) async throws {}
+  public func markOCRWithheld(clipID: UUID, at date: Date) async throws {}
+  @discardableResult
+  public func recordOCRAttempt(clipID: UUID, at date: Date) async throws -> Int { 0 }
+  public func rebuildSearchIndex() async throws {}
 }

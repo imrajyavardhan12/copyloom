@@ -218,6 +218,17 @@ struct LibraryModelTests {
     #expect(await model.tags(for: clip.id).map(\.normalized).sorted() == ["b", "c"])
   }
 
+  @Test("quarantine state passes through to the inspector")
+  func ocrStatusPassthrough() async throws {
+    let clip = summary(kind: .image)
+    let repository = LibraryRepositorySpy(results: [clip])
+    let model = LibraryModel(repository: repository)
+    await repository.seedOCR(id: clip.id, status: .withheld)
+
+    #expect(await model.ocrStatus(for: clip.id) == .withheld)
+    #expect(await model.ocrStatus(for: UUID()) == nil)
+  }
+
   @Test("searching returns to section scope from collections")
   func searchClearsActives() async throws {
     let repository = LibraryRepositorySpy(results: [])
@@ -257,6 +268,7 @@ private actor LibraryRepositorySpy: ClipRepository {
   private var tagged: [(UUID, String)] = []
   private var untagged: [(UUID, String)] = []
   private var collectionReads: [UUID] = []
+  private var ocrJobs: [UUID: OCRJobInfo] = [:]
 
   init(results: [ClipSummary], presetQueries: [SavedQuery] = []) {
     self.results = results
@@ -275,6 +287,12 @@ private actor LibraryRepositorySpy: ClipRepository {
   func attachment(for id: UUID) async throws -> ClipAttachment? { nil }
 
   func attachmentData(for id: UUID) async throws -> Data? { nil }
+
+  func ocrJob(for id: UUID) async throws -> OCRJobInfo? { ocrJobs[id] }
+
+  func seedOCR(id: UUID, status: OCRJobStatus) {
+    ocrJobs[id] = OCRJobInfo(status: status, attempts: 0)
+  }
 
   func count() async throws -> Int { results.count }
 
