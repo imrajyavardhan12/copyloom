@@ -128,7 +128,7 @@ public struct ImageOCRQueue: Sendable {
     guard !Task.isCancelled else { return .noWork }
     let joined = observations.joined(separator: "\n")
     let sensitive =
-      detector.inspect(joined) != .safe || Self.looksLikePEMHeader(joined)
+      detector.inspect(joined) != .safe || OCRPEMHeaderCheck.matches(joined)
     do {
       if sensitive {
         try await repository.markOCRWithheld(clipID: id, at: now())
@@ -168,21 +168,4 @@ public struct ImageOCRQueue: Sendable {
     }
     return CGImageSourceCreateImageAtIndex(source, 0, nil)
   }
-
-  /// Mirrors `VisionImagePreflight`'s tolerant header check: live OCR
-  /// mangles dash runs (`•---BEGIN`, `----BEGIN…-....`), so the exact-match
-  /// PEM pattern in the text detector never fires on screenshots. Kept in
-  /// sync by the preflight/queue tests covering the same observations.
-  private static func looksLikePEMHeader(_ text: String) -> Bool {
-    pemHeaderPattern.firstMatch(
-      in: text, options: [], range: NSRange(text.startIndex..., in: text)
-    ) != nil
-  }
-
-  private static let pemHeaderPattern: NSRegularExpression = {
-    try! NSRegularExpression(
-      pattern: #"-{2,}\s*BEGIN\s+(?:(?:RSA|OPENSSH|DSA|EC)\s+)?PRIVATE\s+KEY"#,
-      options: [.caseInsensitive]
-    )
-  }()
 }
