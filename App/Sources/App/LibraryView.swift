@@ -976,7 +976,7 @@ extension UTType {
 }
 
 extension OSLog {
-  fileprivate static let libraryDrop = OSLog(
+  fileprivate nonisolated static let libraryDrop = OSLog(
     subsystem: "io.github.imrajyavardhan12.copyloom", category: "LibraryDrop")
 }
 
