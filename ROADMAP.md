@@ -69,15 +69,17 @@ Implemented and signed off in `docs/acceptance/m2-vertical-slice.md`: explicit o
 
 **Milestone acceptance:** all 17 checks versioned in [`docs/acceptance/m2-vertical-slice.md`](docs/acceptance/m2-vertical-slice.md) pass; any non-automated permission/focus checks have recorded manual evidence.
 
-## M3 — Library, OCR and developer workflows
+## M3 — Library, OCR and developer workflows (in progress)
 
-- Library: History, Favorites, Pinned, Images, Links, Files, Code and Colors
-- compact list and visual-card densities; collection drag/drop
-- background Vision OCR with searchable output and privacy-safe quarantine policy
-- collections, tags and saved-query Smart Collections
-- transform protocol/registry and initial JSON/text/URL/Base64/file/color actions
-- syntax-highlighted code preview
-- import/export archive v1 with manifest and integrity verification
+Slice order and decisions: [ADR 0005](docs/decisions/0005-library.md).
+
+- [x] Library: History, Favorites, Pinned, Images, Links, Files, Code and Colors (slices 1–2)
+- [x] compact list and visual-card densities; collection drag/drop (slices 1, 3)
+- [x] background Vision OCR with searchable output and privacy-safe quarantine policy (slice 4; owner live evidence pending, see [`docs/validation/m3-ocr.md`](docs/validation/m3-ocr.md))
+- [x] collections, tags and saved-query Smart Collections (slice 3)
+- [ ] transform protocol/registry and initial JSON/text/URL/Base64/file/color actions (slice 5)
+- [ ] syntax-highlighted code preview (plain monospace preview shipped; highlighting needs its own dependency decision)
+- [ ] import/export archive v1 with manifest and integrity verification (slice 6)
 
 **Not included:** semantic search, sync, Vault, MCP, text expansion.
 

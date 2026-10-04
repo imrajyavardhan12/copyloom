@@ -1,8 +1,11 @@
 # M3 Slice 4 Validation — Searchable OCR
 
-_Date: 2026-09-09 · Base commit `16ccd59` (working tree, uncommitted)_
+_Date: 2026-09-09 · Base commit `16ccd59`; landed as `cf653e6`_
 _Status: implemented, tested, bench-measured. Owner screenshot evidence
-pending — **do not commit until the three checks in §Live evidence pass**._
+**still pending**: `cf653e6` was committed before the three checks in
+§Live evidence were run, so the original commit gate was not met. Treat the
+OCR feature as unverified in the real app until each check below records a
+result._
 
 ## Implemented behavior (ADR-0005 §3–4)
 

@@ -5,7 +5,7 @@
 Copyloom is an open-source, native macOS clipboard workspace built to become a private local memory layer—not another disposable clipboard-history list.
 
 > [!IMPORTANT]
-> Copyloom is in early vertical-slice development. Privacy-gated text/link capture, native Quick Paste, and previous-application automatic paste now work. Images, the full Library, configurable ignored apps, and retention settings are not implemented yet.
+> Copyloom is in early development (M2 complete, M3 in progress). Privacy-gated text, link, file-reference and image capture, native Quick Paste, previous-application automatic paste, a full Library window with collections/tags/Smart Collections, and searchable image OCR now work. Transforms, import/export, signed releases and Vault are not implemented yet. See [ROADMAP.md](ROADMAP.md).
 
 ## Principles
 
@@ -27,9 +27,14 @@ Copyloom is an open-source, native macOS clipboard workspace built to become a p
 - on-disk accepted-text repository and external-content FTS5 integration tests;
 - sandboxed menu-bar host with explicit capture onboarding, pause/resume and ignore-next-copy;
 - local sensitive-text detection and concealed/transient/password-manager marker rejection before storage;
-- best-effort source application provenance and ignored-app policy;
-- native Quick Paste panel with `⌃⌘V`, FTS5 search, keyboard navigation, copy, pin and delete actions;
+- best-effort source application provenance and a configurable ignored-app policy;
+- image capture behind a fail-closed in-memory Vision OCR privacy gate;
+- native Settings window: ignored apps, 30-day history retention, permission status;
+- native Quick Paste panel with `⌃⌘V`, FTS5 search, keyboard navigation, copy, pin, favorite and delete actions;
 - Accessibility-gated paste into the retained previous application with copy-only fallback;
+- Library window (`⌃⌘L`) with History, Favorites, Pinned, Images, Links, Files, Code and Colors sections, list/card densities and an inspector;
+- collections, tags and saved-query Smart Collections, with drag into collections;
+- background OCR making images searchable (`has:ocr`), with sensitive text withheld from the index;
 - Apache-2.0 project license.
 
 See [ROADMAP.md](ROADMAP.md) for what is and is not implemented.
@@ -62,7 +67,7 @@ After capturing synthetic text, press `⌃⌘V`, type a query, and use ↑/↓. 
 
 Development builds are ad-hoc signed, so macOS may require Accessibility to be enabled again after rebuilding the app. Copy-only behavior remains available without it.
 
-All currently captured clips are already plain text, so a separate plain-paste shortcut would have no visible effect. It will be exposed when rich-text/HTML/RTF representations are implemented.
+Text clips are captured as plain text only, so a separate plain-paste shortcut would have no visible effect. It will be exposed when rich-text/HTML/RTF representations are implemented.
 
 Or open `Copyloom.xcworkspace` in Xcode. If the shell selects Command Line Tools instead of full Xcode:
 
