@@ -666,7 +666,7 @@ private struct InspectorView: View {
 /// palette icon; the Transform menu converts them to hex).
 private struct KindBadge: View {
   let clip: ClipSummary
-  let loadThumbnail: () async -> NSImage?
+  let loadThumbnail: @MainActor @Sendable () async -> NSImage?
   let isSelected: Bool
 
   var body: some View {
@@ -966,20 +966,15 @@ private enum ClipDrag {
   // the ID here and drops prefer it; the provider stays as fallback.
   // Safe against stale cancels: every new drag overwrites, and only an
   // in-flight drag of ours can reach our own drop target.
-  private static let lock = NSLock()
-  private static var storedID: UUID?
+  //
+  // `OSAllocatedUnfairLock` owns the state, so the static is an immutable,
+  // Sendable `let` that strict concurrency accepts on every supported Xcode
+  // (a lock next to a bare `static var` is rejected before Xcode 26).
+  private static let storedID = OSAllocatedUnfairLock<UUID?>(initialState: nil)
 
   static var draggedID: UUID? {
-    get {
-      lock.lock()
-      defer { lock.unlock() }
-      return storedID
-    }
-    set {
-      lock.lock()
-      defer { lock.unlock() }
-      storedID = newValue
-    }
+    get { storedID.withLock { $0 } }
+    set { storedID.withLock { $0 = newValue } }
   }
 }
 

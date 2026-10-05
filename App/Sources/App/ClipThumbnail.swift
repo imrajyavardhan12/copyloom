@@ -5,7 +5,9 @@ import SwiftUI
 /// so off-screen rows never decode bytes. Callers inject the loader so this
 /// view stays independent of any one feature model.
 struct ClipThumbnail: View {
-  let load: () async -> NSImage?
+  /// Main-actor and Sendable so the non-Sendable `NSImage?` result never
+  /// crosses an isolation boundary on its way into view state.
+  let load: @MainActor @Sendable () async -> NSImage?
   let isSelected: Bool
 
   @State private var image: NSImage?
@@ -28,7 +30,7 @@ struct ClipThumbnail: View {
       in: RoundedRectangle(cornerRadius: 7)
     )
     .clipShape(RoundedRectangle(cornerRadius: 7))
-    .task {
+    .task { @MainActor in
       image = await load()
     }
   }
