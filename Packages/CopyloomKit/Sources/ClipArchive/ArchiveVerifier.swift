@@ -52,17 +52,19 @@ public struct ArchiveVerifier: Sendable {
   // MARK: - Manifest
 
   private func loadManifest(root: URL, fileManager: FileManager) throws -> ArchiveManifest {
-    let url = root.appending(path: "manifest.json")
-    switch Self.itemType(at: url, fileManager) {
-    case nil: throw ArchiveError.missingManifest
-    case .typeRegular: break
-    case .typeSymbolicLink: throw ArchiveError.symlinkNotAllowed("manifest.json")
-    default: throw ArchiveError.invalidManifest
+    let opened: ArchiveFileAccess.Opened
+    do {
+      opened = try ArchiveFileAccess.open(root: root, relativePath: "manifest.json")
+    } catch ArchiveError.missingFile {
+      // Distinguish "no manifest" (an incomplete archive) from other failures.
+      throw ArchiveError.missingManifest
     }
-    guard let size = Self.size(at: url, fileManager), size <= limits.maxManifestBytes else {
-      throw ArchiveError.manifestTooLarge
-    }
-    let data = try Data(contentsOf: url)
+    defer { try? opened.handle.close() }
+    // Size comes from fstat on the descriptor that is read, so a file
+    // swapped in after this check cannot be larger than what was approved.
+    guard opened.size <= limits.maxManifestBytes else { throw ArchiveError.manifestTooLarge }
+    let data = try ArchiveFileAccess.readExactly(
+      opened.handle, count: opened.size, path: "manifest.json")
     let decoder = ArchiveCoding.decoder()
     // Peek at identity before decoding the rest, so a manifest from a newer
     // format reports "unsupported version" instead of a decode failure.
@@ -124,25 +126,13 @@ public struct ArchiveVerifier: Sendable {
   private func verifyFile(
     _ entry: ArchiveManifest.FileEntry, root: URL, fileManager: FileManager, clipCount: Int
   ) throws {
-    // Every component must be a real directory/file: a symlink anywhere in
-    // the chain could redirect a read outside the package.
-    var url = root
-    let components = entry.path.split(separator: "/").map(String.init)
-    for (index, component) in components.enumerated() {
-      url = url.appending(path: component)
-      let isLast = index == components.count - 1
-      switch Self.itemType(at: url, fileManager) {
-      case nil: throw ArchiveError.missingFile(entry.path)
-      case .typeSymbolicLink: throw ArchiveError.symlinkNotAllowed(entry.path)
-      case .typeRegular where isLast: break
-      case .typeDirectory where !isLast: break
-      default: throw ArchiveError.missingFile(entry.path)
-      }
-    }
-    guard Self.size(at: url, fileManager) == entry.bytes else {
-      throw ArchiveError.sizeMismatch(entry.path)
-    }
-    let scan = try ArchiveHashing.scan(url)
+    // Open without following a link at any level, then check size and hash
+    // on the same descriptor: what is verified is exactly what was opened.
+    let opened = try ArchiveFileAccess.open(root: root, relativePath: entry.path)
+    defer { try? opened.handle.close() }
+    guard opened.size == entry.bytes else { throw ArchiveError.sizeMismatch(entry.path) }
+    let scan = try ArchiveHashing.scan(handle: opened.handle)
+    guard scan.bytes == entry.bytes else { throw ArchiveError.sizeMismatch(entry.path) }
     guard scan.sha256 == entry.sha256 else { throw ArchiveError.digestMismatch(entry.path) }
     if ArchivePath.parse(entry.path) == .clips {
       guard scan.longestLine <= limits.maxLineBytes else { throw ArchiveError.lineTooLong }
@@ -198,9 +188,5 @@ public struct ArchiveVerifier: Sendable {
 
   static func itemType(at url: URL, _ fileManager: FileManager) -> FileAttributeType? {
     (try? fileManager.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType
-  }
-
-  static func size(at url: URL, _ fileManager: FileManager) -> Int? {
-    ((try? fileManager.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.intValue
   }
 }

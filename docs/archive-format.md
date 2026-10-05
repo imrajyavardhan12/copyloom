@@ -133,6 +133,8 @@ Import has three phases and the first two have **no side effects**.
 - Check each file's byte size, then stream its SHA-256 and compare. Files present on disk but absent from `files` are ignored and reported, never read.
 - Hard limits: ≤ 1,000,000 clips, `clips.jsonl` lines ≤ 32 MiB (5 MiB text ceiling plus JSON escaping), attachments ≤ the capture image ceiling (25 MiB). Anything over a limit is a verification failure.
 
+**Verification is a point-in-time check, so reading does not trust it.** Files can change between verifying and reading. Every file the verifier or reader touches is opened component by component with `openat(..., O_NOFOLLOW)` (no link is followed at any level), and its size is taken from `fstat` on the descriptor that is then read, so what is checked is exactly what is opened. The reader reads no more than the declared size, re-hashes while streaming (a digest mismatch at the end of the stream aborts the import), and bounds every line. Records already delivered before such a failure are untrusted, which is why apply runs in batches.
+
 ### 2. Plan (dry run)
 
 Parse and validate every record, then show the user a summary **before** anything is written: clips to add, clips already present, collections/tags to add, records rejected and why, and a retention warning (below). The user confirms or cancels.

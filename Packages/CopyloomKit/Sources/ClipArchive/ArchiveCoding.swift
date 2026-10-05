@@ -55,6 +55,12 @@ enum ArchiveHashing {
   static func scan(_ url: URL) throws -> Scan {
     let handle = try FileHandle(forReadingFrom: url)
     defer { try? handle.close() }
+    return try scan(handle: handle)
+  }
+
+  /// Scans an already-opened handle, so a caller that opened it safely hashes
+  /// exactly the file it checked.
+  static func scan(handle: FileHandle) throws -> Scan {
     var hasher = SHA256()
     var bytes = 0
     var lines = 0

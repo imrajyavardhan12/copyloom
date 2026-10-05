@@ -658,3 +658,132 @@ struct ArchiveReaderTests {
     #expect(try ArchiveCoding.decoder().decode(ClipRecord.self, from: Data(json.utf8)) == clip)
   }
 }
+
+// MARK: - Changes after verification (time-of-check / time-of-use)
+
+/// Verification proves the archive was sound at one instant. Files can change
+/// before they are read, so the reader must re-check what it opens and bound
+/// what it reads, rather than trusting the earlier pass.
+@Suite("Archive changes after verification")
+struct ArchiveChangeAfterVerifyTests {
+  private func verified(_ scratch: Scratch) throws -> (Built, VerifiedArchive) {
+    let built = try build(in: scratch)
+    return (built, try ArchiveVerifier().verify(at: built.url))
+  }
+
+  @Test("an attachment swapped for a bigger file is refused by size, not read")
+  func attachmentGrew() throws {
+    let scratch = try Scratch()
+    let (built, archive) = try verified(scratch)
+    try Data(count: 5_000_000).write(to: built.url.appending(path: built.attachment.path))
+    #expect(throws: ArchiveError.sizeMismatch(built.attachment.path)) {
+      _ = try ArchiveReader(archive: archive).attachmentData(at: built.attachment.path)
+    }
+  }
+
+  @Test("an attachment edited in place is caught by its digest")
+  func attachmentEdited() throws {
+    let scratch = try Scratch()
+    let (built, archive) = try verified(scratch)
+    try flipFirstByte(of: built.url.appending(path: built.attachment.path))
+    #expect(throws: ArchiveError.digestMismatch(built.attachment.path)) {
+      _ = try ArchiveReader(archive: archive).attachmentData(at: built.attachment.path)
+    }
+  }
+
+  @Test("an attachment replaced by a symlink after verification is not followed")
+  func attachmentBecameSymlink() throws {
+    let scratch = try Scratch()
+    let (built, archive) = try verified(scratch)
+    let file = built.url.appending(path: built.attachment.path)
+    let target = scratch.root.appending(path: "elsewhere.png")
+    try built.attachmentData.write(to: target)
+    try FileManager.default.removeItem(at: file)
+    try FileManager.default.createSymbolicLink(at: file, withDestinationURL: target)
+    #expect(throws: ArchiveError.symlinkNotAllowed(built.attachment.path)) {
+      _ = try ArchiveReader(archive: archive).attachmentData(at: built.attachment.path)
+    }
+  }
+
+  @Test("an attachment directory replaced by a symlink after verification is not followed")
+  func attachmentDirectoryBecameSymlink() throws {
+    let scratch = try Scratch()
+    let (built, archive) = try verified(scratch)
+    let real = scratch.root.appending(path: "real", directoryHint: .isDirectory)
+    try FileManager.default.moveItem(at: built.url.appending(path: "attachments"), to: real)
+    try FileManager.default.createSymbolicLink(
+      at: built.url.appending(path: "attachments"), withDestinationURL: real)
+    #expect(throws: ArchiveError.self) {
+      _ = try ArchiveReader(archive: archive).attachmentData(at: built.attachment.path)
+    }
+  }
+
+  @Test("library.json grown after verification is refused by size")
+  func libraryGrew() throws {
+    let scratch = try Scratch()
+    let (built, archive) = try verified(scratch)
+    try Data(count: 3_000_000).write(to: built.url.appending(path: "library.json"))
+    #expect(throws: ArchiveError.sizeMismatch("library.json")) {
+      _ = try ArchiveReader(archive: archive).library()
+    }
+  }
+
+  @Test("library.json replaced by a symlink after verification is not followed")
+  func libraryBecameSymlink() throws {
+    let scratch = try Scratch()
+    let (built, archive) = try verified(scratch)
+    let file = built.url.appending(path: "library.json")
+    let target = scratch.root.appending(path: "other.json")
+    try Data(contentsOf: file).write(to: target)
+    try FileManager.default.removeItem(at: file)
+    try FileManager.default.createSymbolicLink(at: file, withDestinationURL: target)
+    #expect(throws: ArchiveError.symlinkNotAllowed("library.json")) {
+      _ = try ArchiveReader(archive: archive).library()
+    }
+  }
+
+  @Test("clips.jsonl that grew after verification is refused before streaming it")
+  func clipsGrew() throws {
+    let scratch = try Scratch()
+    let (built, archive) = try verified(scratch)
+    let handle = try FileHandle(forWritingTo: built.url.appending(path: "clips.jsonl"))
+    try handle.seekToEnd()
+    try handle.write(contentsOf: Data(repeating: 0x41, count: 4_000_000))  // one endless line
+    try handle.close()
+    var delivered = 0
+    #expect(throws: ArchiveError.sizeMismatch("clips.jsonl")) {
+      try ArchiveReader(archive: archive).forEachClip { _, _ in delivered += 1 }
+    }
+    #expect(delivered == 0)
+  }
+
+  @Test("clips.jsonl edited in place is caught by its digest by the end of the stream")
+  func clipsEditedInPlace() throws {
+    let scratch = try Scratch()
+    let (built, archive) = try verified(scratch)
+    let url = built.url.appending(path: "clips.jsonl")
+    var data = try Data(contentsOf: url)
+    data[data.count - 3] ^= 0x01  // same size, different content
+    try data.write(to: url)
+    #expect(throws: ArchiveError.digestMismatch("clips.jsonl")) {
+      try ArchiveReader(archive: archive).forEachClip { _, _ in }
+    }
+  }
+
+  @Test("a line over the limit stops the stream even if verification used a looser limit")
+  func lineBoundEnforcedByReader() throws {
+    let scratch = try Scratch()
+    let writer = try ArchiveWriter(destination: scratch.archiveURL)
+    try writer.injectRawClipLines([String(repeating: "a", count: 200)])
+    _ = try writer.finish(library: .empty, createdBy: createdBy, now: epoch)
+    // Verify with a generous limit, then read with a tight one: the reader
+    // must enforce the bound itself, not rely on the earlier pass.
+    let verified = try ArchiveVerifier().verify(at: scratch.archiveURL)
+    let tight = VerifiedArchive(
+      root: verified.root, manifest: verified.manifest,
+      limits: ArchiveLimits(maxLineBytes: 50), unlistedFiles: [])
+    #expect(throws: ArchiveError.lineTooLong) {
+      try ArchiveReader(archive: tight).forEachClip { _, _ in }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Reads a `VerifiedArchive`. Record-level problems are returned per line;
@@ -5,18 +6,30 @@ import Foundation
 public struct ArchiveReader: Sendable {
   private let archive: VerifiedArchive
   private let attachmentEntries: [String: ArchiveManifest.FileEntry]
+  private let clipsEntry: ArchiveManifest.FileEntry?
+  private let libraryEntry: ArchiveManifest.FileEntry?
 
   public init(archive: VerifiedArchive) {
     self.archive = archive
     var entries: [String: ArchiveManifest.FileEntry] = [:]
+    var clips: ArchiveManifest.FileEntry?
+    var library: ArchiveManifest.FileEntry?
     for entry in archive.manifest.files {
-      if case .attachment = ArchivePath.parse(entry.path) { entries[entry.path] = entry }
+      switch ArchivePath.parse(entry.path) {
+      case .attachment: entries[entry.path] = entry
+      case .clips: clips = entry
+      case .library: library = entry
+      case nil: break
+      }
     }
     attachmentEntries = entries
+    clipsEntry = clips
+    libraryEntry = library
   }
 
   public func library() throws -> LibraryRecord {
-    let data = try Data(contentsOf: archive.root.appending(path: "library.json"))
+    guard let entry = libraryEntry else { throw ArchiveError.missingRequiredFile("library.json") }
+    let data = try readVerified(entry)
     guard let library = try? ArchiveCoding.decoder().decode(LibraryRecord.self, from: data) else {
       throw ArchiveError.invalidManifest
     }
@@ -31,23 +44,41 @@ public struct ArchiveReader: Sendable {
     return library
   }
 
-  /// Streams `clips.jsonl` line by line in bounded memory (verification
-  /// already guaranteed no line exceeds `limits.maxLineBytes`).
+  /// Streams `clips.jsonl` line by line in bounded memory.
+  ///
+  /// The file was verified earlier but may have changed since, so this
+  /// re-checks as it goes: the opened file must still have the declared size,
+  /// no more bytes than that are read, an unterminated line cannot grow past
+  /// `limits.maxLineBytes`, and the digest is re-computed while streaming and
+  /// compared at the end. A mismatch throws; records already delivered must
+  /// be treated as untrusted by the caller (the importer applies in batches
+  /// for exactly this reason).
   public func forEachClip(
     _ body: (_ line: Int, _ result: Result<ClipRecord, ArchiveRecordError>) throws -> Void
   ) throws {
-    let handle = try FileHandle(forReadingFrom: archive.root.appending(path: "clips.jsonl"))
-    defer { try? handle.close() }
+    guard let entry = clipsEntry else { throw ArchiveError.missingRequiredFile("clips.jsonl") }
+    let opened = try ArchiveFileAccess.open(root: archive.root, relativePath: entry.path)
+    defer { try? opened.handle.close() }
+    guard opened.size == entry.bytes else { throw ArchiveError.sizeMismatch(entry.path) }
+
     let decoder = ArchiveCoding.decoder()
+    var hasher = SHA256()
     var buffer = Data()
     var lineNumber = 0
+    var totalRead = 0
 
     func process(_ line: Data) throws {
+      // Enforced here too, not only at verification: a line is untrusted
+      // input to the JSON decoder until proven otherwise.
+      guard line.count <= archive.limits.maxLineBytes else { throw ArchiveError.lineTooLong }
       lineNumber += 1
       try body(lineNumber, decode(line, number: lineNumber, decoder: decoder))
     }
 
-    while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+    while let chunk = try opened.handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+      totalRead += chunk.count
+      guard totalRead <= entry.bytes else { throw ArchiveError.sizeMismatch(entry.path) }
+      hasher.update(data: chunk)
       buffer.append(chunk)
       // Walk the chunk by offset and keep only the unfinished tail once per
       // chunk. Re-slicing `buffer` after every line copies the remainder
@@ -58,8 +89,13 @@ public struct ArchiveReader: Sendable {
         start = buffer.index(after: newline)
       }
       buffer = Data(buffer[start...])
+      guard buffer.count <= archive.limits.maxLineBytes else { throw ArchiveError.lineTooLong }
     }
     if !buffer.isEmpty { try process(buffer) }
+    guard totalRead == entry.bytes else { throw ArchiveError.sizeMismatch(entry.path) }
+    guard ArchiveHashing.hex(hasher.finalize()) == entry.sha256 else {
+      throw ArchiveError.digestMismatch(entry.path)
+    }
   }
 
   private func decode(
@@ -117,14 +153,25 @@ public struct ArchiveReader: Sendable {
     return nil
   }
 
-  /// Reads one attachment. Re-hashes the bytes: the files were verified at
-  /// open time, but they can change on disk before they are read.
+  /// Reads one attachment. The file is opened without following links, its
+  /// size is checked on the open descriptor *before* any bytes are read, and
+  /// the bytes are re-hashed: the files were verified at open time but can
+  /// change on disk before they are read.
   public func attachmentData(at path: String) throws -> Data {
     guard let entry = attachmentEntries[path] else { throw ArchiveError.invalidPath(path) }
-    let data = try Data(contentsOf: archive.root.appending(path: path))
-    guard data.count == entry.bytes else { throw ArchiveError.sizeMismatch(path) }
+    return try readVerified(entry)
+  }
+
+  /// Opens, size-checks on the descriptor, reads exactly the declared size,
+  /// and compares the digest.
+  private func readVerified(_ entry: ArchiveManifest.FileEntry) throws -> Data {
+    let opened = try ArchiveFileAccess.open(root: archive.root, relativePath: entry.path)
+    defer { try? opened.handle.close() }
+    guard opened.size == entry.bytes else { throw ArchiveError.sizeMismatch(entry.path) }
+    let data = try ArchiveFileAccess.readExactly(
+      opened.handle, count: entry.bytes, path: entry.path)
     guard ArchiveHashing.sha256Hex(data) == entry.sha256 else {
-      throw ArchiveError.digestMismatch(path)
+      throw ArchiveError.digestMismatch(entry.path)
     }
     return data
   }
