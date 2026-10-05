@@ -89,6 +89,11 @@ Quick Paste actions menu follows.
 - Export v1 gets its own mini-design at its slice: SQLite online backup +
   attachments + `manifest.json` (schema version, counts, per-file SHA-256)
   + verify path. No format decisions here.
+  (Superseded by [`docs/archive-format.md`](../archive-format.md): the
+  archive is a *logical* directory package of JSON records, not a SQLite
+  snapshot, because importing a foreign database is untrusted-input risk,
+  and a snapshot would copy derived OCR text the quarantine policy
+  withholds. SQLite-based backup/restore remains a separate later feature.)
 
 ### 7. Smart Collections
 
