@@ -125,7 +125,14 @@ matching the parser's existing philosophy.
    fallback.)
 4. **Searchable OCR**: migration 006, background queue, quarantine UX,
    `has:ocr`, bench-measured FTS rebuild.
-5. **Transforms**: registry, built-ins, Library actions.
+5. **Transforms**: registry, built-ins, Library actions. (Scoped: the
+   pure core lives in a new `ClipTransforms` target (Foundation + `ClipDomain`
+   only) rather than the `ContentAnalysis` umbrella ARCHITECTURE sketches:
+   that module would hold nothing else today, and the detectors it would
+   absorb still live in `ClipboardCapture`. Folding it in later is a rename.
+   JSON actions validate with `JSONSerialization` but reformat whitespace at
+   the token level, because re-serializing would reorder keys and rewrite
+   number text such as `1.10` or 20-digit integers.)
 6. **Export/import v1**: archive format mini-design, manifest, verify.
 
 ## Consequences
