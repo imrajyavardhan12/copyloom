@@ -244,11 +244,148 @@ struct LibraryModelTests {
     #expect(await repository.searchQueries().last?.text == [.term("hello")])
   }
 
-  private func summary(kind: ClipKind, isFavorite: Bool = false, isPinned: Bool = false)
+  // MARK: - Transforms (M3 slice 5)
+
+  @Test("offers the registry's transforms for the selected clip")
+  func offersTransforms() async throws {
+    let clip = summary(kind: .text, text: "hello world")
+    let model = LibraryModel(repository: LibraryRepositorySpy(results: [clip]))
+    let ids = model.transforms(for: clip).map(\.id)
+    #expect(ids.contains("text.uppercase"))
+    #expect(!ids.contains("json.pretty"))
+  }
+
+  @Test("previewing runs the transform with no side effects")
+  func previewIsPure() async throws {
+    let clip = summary(kind: .text, text: "hello")
+    let repository = LibraryRepositorySpy(results: [clip])
+    let model = LibraryModel(repository: repository)
+    await model.refresh()
+    model.select(id: clip.id)
+
+    model.previewTransform(id: "text.uppercase")
+
+    #expect(model.transformPreview?.output == "HELLO")
+    #expect(model.transformPreview?.title == "UPPERCASE")
+    #expect(model.transformMessage == nil)
+    #expect(await repository.savedTextClips().isEmpty)
+    #expect(model.selectedClip?.text == "hello")
+  }
+
+  @Test("a failing transform surfaces a message and no preview")
+  func previewFailure() async throws {
+    let clip = summary(kind: .code, text: "{oops")
+    let model = LibraryModel(repository: LibraryRepositorySpy(results: [clip]))
+    await model.refresh()
+    model.select(id: clip.id)
+
+    model.previewTransform(id: "json.pretty")
+
+    #expect(model.transformPreview == nil)
+    #expect(model.transformMessage == "Not valid JSON")
+  }
+
+  @Test("unknown ids and unsupported clips preview nothing")
+  func previewGuards() async throws {
+    let image = summary(kind: .image, text: "")
+    let model = LibraryModel(repository: LibraryRepositorySpy(results: [image]))
+    await model.refresh()
+    model.select(id: image.id)
+
+    model.previewTransform(id: "text.uppercase")
+    #expect(model.transformPreview == nil)
+    model.previewTransform(id: "nope")
+    #expect(model.transformPreview == nil)
+  }
+
+  @Test("changing selection hides a stale preview")
+  func previewFollowsSelection() async throws {
+    let first = summary(kind: .text, text: "one")
+    let second = summary(kind: .text, text: "two")
+    let model = LibraryModel(repository: LibraryRepositorySpy(results: [first, second]))
+    await model.refresh()
+    model.select(id: first.id)
+    model.previewTransform(id: "text.uppercase")
+    #expect(model.transformPreview != nil)
+
+    model.select(id: second.id)
+    #expect(model.transformPreview == nil)
+    #expect(model.transformMessage == nil)
+  }
+
+  @Test("saving stores the output as a new clip of the gate's kind")
+  func savesThroughGate() async throws {
+    let clip = summary(kind: .text, text: "hello")
+    let repository = LibraryRepositorySpy(results: [clip])
+    let model = LibraryModel(
+      repository: repository, transformOutputKind: { _ in .code })
+    await model.refresh()
+    model.select(id: clip.id)
+    model.previewTransform(id: "text.uppercase")
+
+    await model.saveTransformPreview()
+
+    let saved = await repository.savedTextClips()
+    #expect(saved.count == 1)
+    #expect(saved.first?.text == "HELLO")
+    #expect(saved.first?.kind == .code)
+    #expect(saved.first?.id != clip.id)
+    #expect(model.transformMessage == "Saved as a new clip")
+  }
+
+  @Test("output the gate refuses is never saved but stays copyable")
+  func gateRefusal() async throws {
+    let clip = summary(kind: .text, text: "aGVsbG8=")
+    let repository = LibraryRepositorySpy(results: [clip])
+    let model = LibraryModel(repository: repository, transformOutputKind: { _ in nil })
+    await model.refresh()
+    model.select(id: clip.id)
+    model.previewTransform(id: "base64.decode")
+
+    await model.saveTransformPreview()
+
+    #expect(await repository.savedTextClips().isEmpty)
+    #expect(model.transformPreview?.output == "hello")
+    #expect(model.transformMessage == "Not saved: the result looks sensitive or is too large")
+  }
+
+  @Test("a model with no output policy refuses to save (fail closed)")
+  func defaultRefuses() async throws {
+    let clip = summary(kind: .text, text: "hello")
+    let repository = LibraryRepositorySpy(results: [clip])
+    let model = LibraryModel(repository: repository)
+    await model.refresh()
+    model.select(id: clip.id)
+    model.previewTransform(id: "text.uppercase")
+
+    await model.saveTransformPreview()
+
+    #expect(await repository.savedTextClips().isEmpty)
+  }
+
+  @Test("a storage failure is reported without losing the preview")
+  func saveFailure() async throws {
+    let clip = summary(kind: .text, text: "hello")
+    let repository = LibraryRepositorySpy(results: [clip])
+    await repository.failFutureSaves()
+    let model = LibraryModel(repository: repository, transformOutputKind: { _ in .text })
+    await model.refresh()
+    model.select(id: clip.id)
+    model.previewTransform(id: "text.uppercase")
+
+    await model.saveTransformPreview()
+
+    #expect(model.transformPreview?.output == "HELLO")
+    #expect(model.transformMessage == "Unable to save the result")
+  }
+
+  private func summary(
+    kind: ClipKind, text: String = "fixture", isFavorite: Bool = false, isPinned: Bool = false
+  )
     -> ClipSummary
   {
     ClipSummary(
-      id: UUID(), kind: kind, text: "fixture", createdAt: .now,
+      id: UUID(), kind: kind, text: text, createdAt: .now,
       lastSeenAt: .now, copyCount: 1, isPinned: isPinned,
       isFavorite: isFavorite, source: nil
     )
@@ -269,6 +406,8 @@ private actor LibraryRepositorySpy: ClipRepository {
   private var untagged: [(UUID, String)] = []
   private var collectionReads: [UUID] = []
   private var ocrJobs: [UUID: OCRJobInfo] = [:]
+  private var savedTexts: [AcceptedTextClip] = []
+  private var failSaves = false
 
   init(results: [ClipSummary], presetQueries: [SavedQuery] = []) {
     self.results = results
@@ -277,8 +416,17 @@ private actor LibraryRepositorySpy: ClipRepository {
   }
 
   func saveAcceptedText(_ clip: AcceptedTextClip) async throws -> ClipSummary {
-    throw TestError.unexpectedCall
+    if failSaves { throw TestError.unexpectedCall }
+    savedTexts.append(clip)
+    return ClipSummary(
+      id: clip.id, kind: clip.kind, text: clip.text, createdAt: clip.capturedAt,
+      lastSeenAt: clip.capturedAt, copyCount: 1, isPinned: false, isFavorite: false,
+      source: clip.source)
   }
+
+  func savedTextClips() -> [AcceptedTextClip] { savedTexts }
+
+  func failFutureSaves() { failSaves = true }
 
   func saveAcceptedImage(_ clip: AcceptedImageClip) async throws -> ClipSummary {
     throw TestError.unexpectedCall

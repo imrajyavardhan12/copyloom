@@ -1,6 +1,7 @@
 import AppKit
 import ClipDomain
 import ClipSearch
+import ClipTransforms
 import Foundation
 import ImageIO
 import Observation
@@ -74,6 +75,13 @@ public enum LibraryTarget: Hashable, Sendable {
   case smart(UUID)
 }
 
+/// A computed, not-yet-persisted transform result for the selected clip.
+public struct TransformPreview: Equatable, Sendable {
+  public let transformID: String
+  public let title: String
+  public let output: String
+}
+
 @MainActor
 @Observable
 public final class LibraryModel {
@@ -87,12 +95,16 @@ public final class LibraryModel {
   public private(set) var smartQueries: [SavedQuery] = []
   public private(set) var activeCollectionID: UUID?
   public private(set) var activeSmartQueryID: UUID?
+  private var transformSession: TransformSession?
 
   @ObservationIgnored private let repository: any ClipRepository
   @ObservationIgnored private let parser: SearchQueryParser
   @ObservationIgnored private let now: @MainActor @Sendable () -> Date
   @ObservationIgnored private let calendar: Calendar
   @ObservationIgnored private var requestGeneration = 0
+  @ObservationIgnored private let transformRegistry: TransformRegistry
+  @ObservationIgnored private let transformOutputKind: @Sendable (String) -> ClipKind?
+  @ObservationIgnored private let makeID: @Sendable () -> UUID
   // Same lazy-thumbnail shape as Quick Paste's model; the two converge when
   // a shared integration module lands (see ADR-0005).
   @ObservationIgnored private let thumbnails = NSCache<NSUUID, NSImage>()
@@ -101,12 +113,32 @@ public final class LibraryModel {
     repository: any ClipRepository,
     parser: SearchQueryParser = SearchQueryParser(),
     now: @escaping @MainActor @Sendable () -> Date = { .now },
-    calendar: Calendar = .current
+    calendar: Calendar = .current,
+    transforms: TransformRegistry = .builtIn,
+    transformOutputKind: @escaping @Sendable (String) -> ClipKind? = { _ in nil },
+    makeID: @escaping @Sendable () -> UUID = { UUID() }
   ) {
+    self.transformRegistry = transforms
+    self.transformOutputKind = transformOutputKind
+    self.makeID = makeID
     self.repository = repository
     self.parser = parser
     self.now = now
     self.calendar = calendar
+  }
+
+  /// Transform preview for the selected clip. Hidden (not cleared) when the
+  /// selection moves, so a result can never be shown or saved against the
+  /// wrong clip.
+  public var transformPreview: TransformPreview? { currentTransformSession?.preview }
+
+  /// Status or failure text for the transform UI. Fixed strings only: never
+  /// clip content.
+  public var transformMessage: String? { currentTransformSession?.message }
+
+  private var currentTransformSession: TransformSession? {
+    guard let transformSession, transformSession.clipID == selectedID else { return nil }
+    return transformSession
   }
 
   public var selectedClip: ClipSummary? {
@@ -356,6 +388,71 @@ public final class LibraryModel {
     }
   }
 
+  // MARK: - Transforms (M3 slice 5, ADR-0005 §5)
+
+  public func transforms(for clip: ClipSummary) -> [any ClipTransform] {
+    transformRegistry.transforms(for: clip)
+  }
+
+  /// Runs a transform over the selected clip's text. Pure: nothing is
+  /// persisted or copied until the user chooses to.
+  public func previewTransform(id: String) {
+    guard let clip = selectedClip, let transform = transformRegistry.transform(id: id),
+      transform.applies(to: clip)
+    else {
+      return
+    }
+    do {
+      let output = try transform.apply(clip.text)
+      transformSession = TransformSession(
+        clipID: clip.id,
+        preview: TransformPreview(
+          transformID: transform.id, title: transform.title, output: output),
+        message: nil)
+    } catch let error as TransformError {
+      transformSession = TransformSession(clipID: clip.id, preview: nil, message: error.message)
+    } catch {
+      transformSession = TransformSession(
+        clipID: clip.id, preview: nil, message: "The transform failed")
+    }
+  }
+
+  public func dismissTransformPreview() {
+    transformSession = nil
+  }
+
+  /// Saves the previewed output as a new clip. The output policy runs first
+  /// and defaults to refusing everything, so a model constructed without the
+  /// capture gate can never persist transformed text (a decode can turn an
+  /// innocuous clip into a credential).
+  public func saveTransformPreview() async {
+    guard let session = currentTransformSession, let preview = session.preview else { return }
+    guard let kind = transformOutputKind(preview.output) else {
+      transformSession?.message = "Not saved: the result looks sensitive or is too large"
+      return
+    }
+    do {
+      _ = try await repository.saveAcceptedText(
+        AcceptedTextClip(
+          id: makeID(), kind: kind, text: preview.output, capturedAt: now(), source: nil))
+    } catch {
+      transformSession?.message = "Unable to save the result"
+      return
+    }
+    await reloadCurrentListing()
+    transformSession?.message = "Saved as a new clip"
+  }
+
+  private func reloadCurrentListing() async {
+    if let activeCollectionID {
+      await runCollectionListing(id: activeCollectionID)
+    } else if let activeSmartQueryID {
+      await runSmartListing(id: activeSmartQueryID)
+    } else {
+      await refresh()
+    }
+  }
+
   public func imageData(for id: UUID) async -> Data? {
     try? await repository.attachmentData(for: id)
   }
@@ -464,6 +561,12 @@ public final class LibraryModel {
     guard generation == requestGeneration else { return }
     isLoading = false
   }
+}
+
+private struct TransformSession {
+  let clipID: UUID
+  var preview: TransformPreview?
+  var message: String?
 }
 
 extension ClipSummary {
