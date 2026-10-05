@@ -122,11 +122,26 @@ final class AppModel {
           (lastEventText.map { $0 + " " } ?? "")
           + "The ⌃⌘L Library shortcut is unavailable; use the Copyloom menu."
       }
-      if captureEnabled && !capturePaused {
+      #if DEBUG
+        let isPreview = PreviewMode.isEnabled
+      #else
+        let isPreview = false
+      #endif
+      // Preview mode (developer-only, DEBUG) runs on a synthetic database:
+      // never start capture or retention there.
+      if captureEnabled && !capturePaused && !isPreview {
         monitor?.start()
       }
       refreshClipCount()
-      runRetentionCleanup()
+      if !isPreview {
+        runRetentionCleanup()
+      }
+      #if DEBUG
+        if isPreview {
+          PreviewMode.launch(
+            model: self, repository: database.repository, libraryModel: libraryModel)
+        }
+      #endif
     } catch {
       captureEnabled = false
       capturePaused = false
@@ -450,7 +465,12 @@ final class AppModel {
       appropriateFor: nil,
       create: true
     )
-    let directory = applicationSupport.appending(path: "Copyloom", directoryHint: .isDirectory)
+    #if DEBUG
+      let directoryName = PreviewMode.isEnabled ? PreviewMode.dataDirectoryName : "Copyloom"
+    #else
+      let directoryName = "Copyloom"
+    #endif
+    let directory = applicationSupport.appending(path: directoryName, directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appending(path: "history.sqlite")
   }
