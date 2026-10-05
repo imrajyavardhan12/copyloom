@@ -55,3 +55,29 @@ For behavior work: add one failing public-seam test, verify the expected failure
 ## Non-automatable evidence
 
 TCC prompts, Accessibility revocation, cross-application focus, Spaces/full-screen behavior, secure fields, keyboard layouts and newer macOS Paste from Other Apps behavior require a signed manual matrix. Manual evidence is versioned; it is not reported as automated coverage.
+
+## Visual preview (developer-only)
+
+Layout and visual regressions are easy to miss from code and impossible to catch with unit tests. A DEBUG build can render its own surfaces without a screen:
+
+```bash
+# Build the signed Debug app the way scripts/run.sh does, but do not launch it:
+xcodebuild -quiet -workspace Copyloom.xcworkspace -scheme Copyloom -configuration Debug \
+  -destination "platform=macOS,arch=$(uname -m)" -derivedDataPath .build/RunDerivedData \
+  -clonedSourcePackagesDirPath .build/SourcePackages -onlyUsePackageVersionsFromResolvedFile build
+
+COPYLOOM_PREVIEW=1 .build/RunDerivedData/Build/Products/Debug/Copyloom.app/Contents/MacOS/Copyloom
+```
+
+The app must be signed (the sandbox needs its entitlements), so the unsigned `scripts/ci.sh` build cannot be used for this.
+
+Preview mode:
+
+- uses a separate `Copyloom-Preview` database seeded with obviously synthetic clips, so it never reads or writes real history;
+- never starts clipboard capture or retention cleanup;
+- renders the Library (list, cards, transform preview, image, colors, empty state), Quick Paste and Settings in light and dark, then quits;
+- renders in-process (`NSHostingView` + `cacheDisplay`), so it needs no Screen Recording permission. PNGs land in the sandbox container's temporary directory (`~/Library/Containers/io.github.imrajyavardhan12.copyloom/Data/tmp/`) and the path is printed to stderr.
+
+Known limits of in-process rendering: sidebar vibrancy, window chrome and toolbars are not drawn, and prominent buttons appear gray because the window is never key. Judge sidebar/toolbar changes in the real app. The code is `#if DEBUG` and absent from release builds.
+
+Do not launch the app with `scripts/run.sh` for this: it starts the real app against the real database.
