@@ -80,7 +80,13 @@ final class AppModel {
       )
       self.quickPasteController = quickPasteController
       automaticPasteEnabled = quickPasteController.hasPostEventAccess
-      let libraryModel = LibraryModel(repository: database.repository)
+      // Transform results saved as clips pass the same text gate as a real
+      // copy: size ceiling, sensitive detector, then kind classification.
+      let outputGate = TextOutputGate()
+      let libraryModel = LibraryModel(
+        repository: database.repository,
+        transformOutputKind: { outputGate.kind(for: $0) }
+      )
       self.libraryModel = libraryModel
       self.libraryWindowController = LibraryWindowController(model: libraryModel)
       // M3 slice 4: serial background OCR over stored images. Idle

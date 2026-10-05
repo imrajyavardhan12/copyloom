@@ -15,9 +15,15 @@ final class PasteboardClipCopier {
   }
 
   func copy(_ clip: ClipSummary, plainText: Bool = false) throws {
+    try copyText(clip.text, sourceBundleID: clip.source?.bundleIdentifier)
+  }
+
+  /// Writes arbitrary text (e.g. a transform result) with the same
+  /// loop-suppression marker as a clip copy, so it is never re-captured.
+  func copyText(_ text: String, sourceBundleID: String?) throws {
     let item = NSPasteboardItem()
-    item.setString(clip.text, forType: .string)
-    Self.mark(item, sourceBundleID: clip.source?.bundleIdentifier)
+    item.setString(text, forType: .string)
+    Self.mark(item, sourceBundleID: sourceBundleID)
 
     pasteboard.clearContents()
     guard pasteboard.writeObjects([item]) else {

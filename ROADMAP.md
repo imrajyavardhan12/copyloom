@@ -77,7 +77,7 @@ Slice order and decisions: [ADR 0005](docs/decisions/0005-library.md).
 - [x] compact list and visual-card densities; collection drag/drop (slices 1, 3)
 - [x] background Vision OCR with searchable output and privacy-safe quarantine policy (slice 4; owner live evidence pending, see [`docs/validation/m3-ocr.md`](docs/validation/m3-ocr.md))
 - [x] collections, tags and saved-query Smart Collections (slice 3)
-- [ ] transform protocol/registry and initial JSON/text/URL/Base64/file/color actions (slice 5)
+- [x] transform protocol/registry and initial JSON/text/URL/Base64/color actions (slice 5; file-path actions deferred, nothing in M3 produces a use case for them yet)
 - [ ] syntax-highlighted code preview (plain monospace preview shipped; highlighting needs its own dependency decision)
 - [ ] import/export archive v1 with manifest and integrity verification (slice 6)
 

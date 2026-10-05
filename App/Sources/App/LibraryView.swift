@@ -484,10 +484,12 @@ private struct InspectorView: View {
           HStack {
             Button("Copy") { Task { await copyClip(clip) } }
               .buttonStyle(.borderedProminent)
+            transformMenu(for: clip)
             Button("Delete", role: .destructive) {
               Task { await model.delete(id: clip.id) }
             }
           }
+          transformResult
           if copyError {
             Text("Copy failed.")
               .font(.caption)
@@ -505,6 +507,78 @@ private struct InspectorView: View {
         systemImage: "sidebar.right",
         description: Text("Select a clip to preview it.")
       )
+    }
+  }
+
+  /// Transform actions (M3 slice 5). Choosing one only previews the result;
+  /// copying or saving is a separate, explicit step.
+  @ViewBuilder
+  private func transformMenu(for clip: ClipSummary) -> some View {
+    let available = model.transforms(for: clip)
+    if !available.isEmpty {
+      Menu("Transform") {
+        ForEach(available, id: \.id) { transform in
+          Button(transform.title) { model.previewTransform(id: transform.id) }
+        }
+      }
+      .accessibilityLabel("Transform clip text")
+    }
+  }
+
+  /// Largest result shown inline; the full result is still what Copy and
+  /// Save use.
+  private static let previewCharacterLimit = 4_000
+
+  @ViewBuilder
+  private var transformResult: some View {
+    if let preview = model.transformPreview {
+      VStack(alignment: .leading, spacing: 8) {
+        HStack {
+          Text(preview.title)
+            .font(.callout)
+            .bold()
+          Spacer()
+          Button("Dismiss") { model.dismissTransformPreview() }
+            .buttonStyle(.link)
+        }
+        Text(String(preview.output.prefix(Self.previewCharacterLimit)))
+          .font(.system(.callout, design: .monospaced))
+          .textSelection(.enabled)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(8)
+          .background(
+            Color.secondary.opacity(0.12),
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        if preview.output.count > Self.previewCharacterLimit {
+          Text("Preview truncated. Copy and Save use the full result.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        HStack {
+          Button("Copy result") { copyTransformResult(preview) }
+          Button("Save as clip") { Task { await model.saveTransformPreview() } }
+        }
+        if let message = model.transformMessage {
+          Text(message)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("Transform result: \(preview.title)")
+    } else if let message = model.transformMessage {
+      Text(message)
+        .font(.caption)
+        .foregroundStyle(.red)
+    }
+  }
+
+  private func copyTransformResult(_ preview: TransformPreview) {
+    copyError = false
+    do {
+      try PasteboardClipCopier().copyText(preview.output, sourceBundleID: nil)
+    } catch {
+      copyError = true
     }
   }
 
@@ -589,7 +663,7 @@ private struct InspectorView: View {
 
 /// Kind icon shared by Library rows. Images resolve thumbnails; colors show
 /// a swatch when the value parses as hex (functional notations keep the
-/// palette icon until transforms own color conversion in slice 5).
+/// palette icon; the Transform menu converts them to hex).
 private struct KindBadge: View {
   let clip: ClipSummary
   let loadThumbnail: () async -> NSImage?
