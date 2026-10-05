@@ -44,14 +44,20 @@ enum JSONTransforms {
   static func reformat(_ input: String, pretty: Bool) throws -> String {
     try validate(input)
     let scalars = Array(input.unicodeScalars)
-    var output = String.UnicodeScalarView()
+    // Array, not `String.UnicodeScalarView`: bulk-appending indentation to
+    // the view is O(n) per call, which made pretty-printing quadratic.
+    var output: [Unicode.Scalar] = []
+    output.reserveCapacity(scalars.count + scalars.count / 4)
     var depth = 0
     var index = 0
 
     func newline() {
       guard pretty else { return }
       output.append("\n")
-      output.append(contentsOf: String(repeating: "  ", count: depth).unicodeScalars)
+      for _ in 0..<depth {
+        output.append(" ")
+        output.append(" ")
+      }
     }
 
     func nextSignificant(after position: Int) -> Unicode.Scalar? {
@@ -106,6 +112,8 @@ enum JSONTransforms {
       }
       index += 1
     }
-    return String(output)
+    var result = String.UnicodeScalarView()
+    result.append(contentsOf: output)
+    return String(result)
   }
 }

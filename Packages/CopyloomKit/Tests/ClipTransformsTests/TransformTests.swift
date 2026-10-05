@@ -94,6 +94,23 @@ struct JSONTransformTests {
     #expect(try run("json.minify", pretty) == input)
   }
 
+  @Test("pretty-printing scales linearly on multi-megabyte clips")
+  func prettyScales() throws {
+    // Regression: appending indentation scalar-by-scalar into a
+    // `String.UnicodeScalarView` made pretty-printing quadratic (≈92 s for
+    // 5 MiB). Capture allows 5 MiB clips, so this must stay fast. The bound
+    // is generous (≈50× the linear cost) to avoid flaking on slow CI.
+    let record = #"{"id":1,"name":"item","vals":[1.10,2,3],"nested":{"k":"v"}}"#
+    let count = 2 * 1_024 * 1_024 / (record.utf8.count + 1)
+    let json = "[" + Array(repeating: record, count: count).joined(separator: ",") + "]"
+    let start = ContinuousClock.now
+
+    let output = try run("json.pretty", json)
+
+    #expect(ContinuousClock.now - start < .seconds(5))
+    #expect(try run("json.minify", output) == json)
+  }
+
   @Test("structural characters inside strings are not reformatted")
   func stringsUntouched() throws {
     let output = try run("json.pretty", #"{"k":"[1, 2]: {x}"}"#)
