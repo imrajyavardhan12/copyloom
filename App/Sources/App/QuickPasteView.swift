@@ -134,7 +134,8 @@ struct QuickPasteView: View {
       Text("Return: Paste")
       Text("⌘Return: Copy only")
       Spacer()
-      Text("⌘P Pin ⌘F Fav")
+      Text("⌘P Pin")
+      Text("⌘F Favorite")
       Text("⌥⌫ Delete")
       Text("⌘1–9")
     }
@@ -153,18 +154,11 @@ private struct QuickPasteRow: View {
 
   var body: some View {
     HStack(spacing: 12) {
-      if clip.kind == .image {
-        ClipThumbnail(load: { await model.loadThumbnail(for: clip) }, isSelected: isSelected)
-      } else {
-        Image(systemName: clip.kind == .link ? "link" : "text.alignleft")
-          .font(.system(size: 15, weight: .semibold))
-          .foregroundStyle(isSelected ? Color.white : Color.accentColor)
-          .frame(width: 28, height: 28)
-          .background(
-            (isSelected ? Color.white.opacity(0.18) : Color.accentColor.opacity(0.12)),
-            in: RoundedRectangle(cornerRadius: 7)
-          )
-      }
+      KindBadge(
+        clip: clip,
+        loadThumbnail: { await model.loadThumbnail(for: clip) },
+        isSelected: isSelected
+      )
 
       VStack(alignment: .leading, spacing: 4) {
         Text(rowTitle)
@@ -176,7 +170,7 @@ private struct QuickPasteRow: View {
           if let source = clip.source?.applicationName ?? clip.source?.bundleIdentifier {
             Text(source)
           }
-          Text(clip.lastSeenAt, style: .relative)
+          ClipAgeText(date: clip.lastSeenAt)
           if clip.copyCount > 1 {
             Text("Copied \(clip.copyCount)×")
           }
@@ -225,8 +219,7 @@ private struct QuickPasteRow: View {
       let prefix = clip.isFavorite ? "Favorite " : ""
       return "\(prefix)image from \(source)"
     }
-    let kind = clip.kind == .link ? "Link" : "Text"
     let prefix = clip.isFavorite ? "Favorite " : ""
-    return "\(prefix)\(kind) from \(source): \(clip.text)"
+    return "\(prefix)\(clip.kind.displayName) from \(source): \(clip.text)"
   }
 }

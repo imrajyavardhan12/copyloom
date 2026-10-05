@@ -24,6 +24,7 @@
 		A2000000000000000000000F /* ClipThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000000000000000000000C /* ClipThumbnail.swift */; };
 		A20000000000000000000010 /* LibraryWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000000000000000000000D /* LibraryWindowController.swift */; };
 		A200000000000000000000FA /* PreviewMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000000FA /* PreviewMode.swift */; };
+		A200000000000000000000FB /* ClipPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000000FB /* ClipPresentation.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +42,7 @@
 		A3000000000000000000000C /* ClipThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipThumbnail.swift; sourceTree = "<group>"; };
 		A3000000000000000000000D /* LibraryWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryWindowController.swift; sourceTree = "<group>"; };
 		A300000000000000000000FA /* PreviewMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewMode.swift; sourceTree = "<group>"; };
+		A300000000000000000000FB /* ClipPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipPresentation.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -90,6 +92,7 @@
 				A3000000000000000000000C /* ClipThumbnail.swift */,
 				A3000000000000000000000D /* LibraryWindowController.swift */,
 				A300000000000000000000FA /* PreviewMode.swift */,
+				A300000000000000000000FB /* ClipPresentation.swift */,
 				A3000000000000000000000A /* SettingsView.swift */,
 			);
 			path = App;
@@ -191,6 +194,7 @@
 				A2000000000000000000000F /* ClipThumbnail.swift in Sources */,
 				A20000000000000000000010 /* LibraryWindowController.swift in Sources */,
 				A200000000000000000000FA /* PreviewMode.swift in Sources */,
+				A200000000000000000000FB /* ClipPresentation.swift in Sources */,
 				A2000000000000000000000C /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

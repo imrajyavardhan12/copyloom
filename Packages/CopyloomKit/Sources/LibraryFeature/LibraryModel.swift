@@ -473,7 +473,7 @@ public final class LibraryModel {
     let key = clip.id as NSUUID
     if let cached = thumbnails.object(forKey: key) { return cached }
     guard let data = try? await repository.attachmentData(for: clip.id),
-      let thumbnail = Self.makeThumbnail(from: data)
+      let thumbnail = Self.makeThumbnail(from: data, maxPixelSize: 512)
     else {
       return nil
     }
@@ -481,11 +481,23 @@ public final class LibraryModel {
     return thumbnail
   }
 
-  private static func makeThumbnail(from data: Data) -> NSImage? {
+  /// Large downsampled image for the inspector. Not cached: only one is on
+  /// screen at a time, and downsampling keeps a 25 MB capture from decoding
+  /// at full size.
+  public func loadPreview(for clip: ClipSummary) async -> NSImage? {
+    guard clip.kind == .image,
+      let data = try? await repository.attachmentData(for: clip.id)
+    else {
+      return nil
+    }
+    return Self.makeThumbnail(from: data, maxPixelSize: 1_600)
+  }
+
+  private static func makeThumbnail(from data: Data, maxPixelSize: Int) -> NSImage? {
     let options: CFDictionary =
       [
         kCGImageSourceCreateThumbnailFromImageAlways: true,
-        kCGImageSourceThumbnailMaxPixelSize: 256,
+        kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
         kCGImageSourceCreateThumbnailWithTransform: true,
       ] as CFDictionary
     guard let source = CGImageSourceCreateWithData(data as CFData, nil),
