@@ -1,6 +1,6 @@
 # Archive Format v1 (Export / Import)
 
-_Status: proposed design for M3 slice 6. No code yet; review before implementation._
+_Status: accepted design for M3 slice 6; 6a (format core) implemented._
 _Updated: 2026-10-05_
 _Supersedes the sketch in [ADR 0005](decisions/0005-library.md) §6 ("SQLite online backup + attachments + manifest"); see [Decision 1](#decision-1-a-logical-archive-not-a-database-snapshot)._
 
@@ -191,7 +191,9 @@ Each slice leaves `main` green and is useful on its own (6b alone is a verified 
 - **Scale:** export and import of the 100k benchmark corpus with throughput and peak memory recorded in `docs/validation/` (measured, not promised; memory must stay bounded because both directions stream).
 - **Manual evidence:** a Finder round trip on a signed host, since sandbox grants are only observable there.
 
-## Open questions
+## Decisions on the original open questions (2026-10-05)
 
-1. **Scope selector.** v1 exports the whole library. Exporting a collection or Smart Collection is a natural v1.1 (the format already supports it: it is just a filtered set of records). Is whole-library enough for the first release?
-2. **Archive filename and type registration.** `.copyloom` as a package extension needs an `UTExportedTypeDeclarations` entry in the app's Info.plist. Should the first release register it, or use an ordinary folder name until the type is stable?
+1. **Scope:** v1 exports the **whole library** only. Exporting a collection or Smart Collection is the next step; the format already supports it (a filtered record set), so it needs no format change.
+2. **Archive type:** v1 uses an **ordinary folder name** and does not register a `.copyloom` type. Registration is deferred until the format has survived real use, because the extension is hard to change once archives exist in the wild.
+
+Status: design accepted. **6a (format core) implemented** in `ClipArchive` (records, manifest, path whitelist, writer, verifier, reader; 40 tests). 6b (export) and 6c (import) pending.

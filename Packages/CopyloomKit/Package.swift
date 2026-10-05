@@ -17,6 +17,7 @@ let package = Package(
         .executable(name: "copyloom-bench", targets: ["CopyloomBenchmarks"]),
         .library(name: "LibraryFeature", targets: ["LibraryFeature"]),
         .library(name: "ClipTransforms", targets: ["ClipTransforms"]),
+        .library(name: "ClipArchive", targets: ["ClipArchive"]),
     ],
     dependencies: [
         .package(
@@ -37,6 +38,7 @@ let package = Package(
         .target(name: "ClipboardCapture", dependencies: ["ClipDomain"]),
         .target(name: "QuickPasteFeature", dependencies: ["ClipDomain", "ClipSearch"]),
         .target(name: "ClipTransforms", dependencies: ["ClipDomain"]),
+        .target(name: "ClipArchive"),
         .target(
             name: "LibraryFeature", dependencies: ["ClipDomain", "ClipSearch", "ClipTransforms"]),
         .executableTarget(name: "CopyloomCorpusGenerator"),
@@ -63,6 +65,10 @@ let package = Package(
         .testTarget(
             name: "QuickPasteFeatureTests",
             dependencies: ["ClipDomain", "QuickPasteFeature"]
+        ),
+        .testTarget(
+            name: "ClipArchiveTests",
+            dependencies: ["ClipArchive"]
         ),
         .testTarget(
             name: "ClipTransformsTests",
