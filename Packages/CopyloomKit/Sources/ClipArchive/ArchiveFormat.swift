@@ -14,6 +14,12 @@ public enum ArchiveFormat {
 }
 
 /// Hard bounds applied while verifying and reading untrusted archives.
+///
+/// The manifest lists every attachment (~250 bytes each), so its cap must
+/// scale with `maxFiles`: 64 MiB holds ~250k entries, comfortably more than a
+/// large personal library, while still bounding parse time and memory. (A
+/// first draft capped it at 1 MiB, which rejected any library with more than
+/// ~4,000 images.)
 public struct ArchiveLimits: Equatable, Sendable {
   public var maxManifestBytes: Int
   public var maxClips: Int
@@ -23,21 +29,26 @@ public struct ArchiveLimits: Equatable, Sendable {
   /// The capture image ceiling.
   public var maxAttachmentBytes: Int
   public var maxLibraryBytes: Int
+  /// Bounds hashing time: without it a declared multi-terabyte sparse
+  /// `clips.jsonl` would keep the verifier busy for hours.
+  public var maxClipsFileBytes: Int
   public var maxFiles: Int
 
   public init(
-    maxManifestBytes: Int = 1 << 20,
+    maxManifestBytes: Int = 64 << 20,
     maxClips: Int = 1_000_000,
     maxLineBytes: Int = 32 << 20,
     maxAttachmentBytes: Int = 25 << 20,
     maxLibraryBytes: Int = 64 << 20,
-    maxFiles: Int = 2_000_000
+    maxClipsFileBytes: Int = 16 << 30,
+    maxFiles: Int = 500_000
   ) {
     self.maxManifestBytes = maxManifestBytes
     self.maxClips = maxClips
     self.maxLineBytes = maxLineBytes
     self.maxAttachmentBytes = maxAttachmentBytes
     self.maxLibraryBytes = maxLibraryBytes
+    self.maxClipsFileBytes = maxClipsFileBytes
     self.maxFiles = maxFiles
   }
 
@@ -58,6 +69,8 @@ public enum ArchiveError: Error, Equatable, Sendable {
   case duplicatePath(String)
   case missingRequiredFile(String)
   case missingFile(String)
+  /// Present but a FIFO, device, directory or socket. Never opened for reading.
+  case notARegularFile(String)
   case symlinkNotAllowed(String)
   // Integrity
   case sizeMismatch(String)

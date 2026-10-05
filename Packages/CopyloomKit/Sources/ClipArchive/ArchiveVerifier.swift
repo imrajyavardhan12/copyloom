@@ -99,6 +99,9 @@ public struct ArchiveVerifier: Sendable {
       switch parsed {
       case .clips:
         hasClips = true
+        guard entry.bytes <= limits.maxClipsFileBytes else {
+          throw ArchiveError.fileTooLarge(entry.path)
+        }
       case .library:
         hasLibrary = true
         guard entry.bytes <= limits.maxLibraryBytes else {

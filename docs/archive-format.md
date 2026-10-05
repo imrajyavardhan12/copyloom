@@ -127,13 +127,13 @@ Import has three phases and the first two have **no side effects**.
 
 ### 1. Verify (read-only)
 
-- Reject unless `manifest.json` exists, is under 1 MiB, and `format`/`formatVersion` are supported.
+- Reject unless `manifest.json` exists, is under 64 MiB (it lists every attachment at ~250 bytes each, so 1 MiB would reject any library with more than ~4,000 images), and `format`/`formatVersion` are supported.
 - For every manifest entry: path is relative, has no `..` or empty components, is not absolute, resolves (after standardizing) inside the package root, and is **not a symlink**. Reject the whole archive on any violation.
 - Attachment paths must equal the layout derived from their own digest (`ab/cd/<hex>.<ext>`) with an extension in `AttachmentStore.supportedUTIs`. The importer regenerates the stored path from the digest and never uses the archive's string for the destination.
 - Check each file's byte size, then stream its SHA-256 and compare. Files present on disk but absent from `files` are ignored and reported, never read.
-- Hard limits: ≤ 1,000,000 clips, `clips.jsonl` lines ≤ 32 MiB (5 MiB text ceiling plus JSON escaping), attachments ≤ the capture image ceiling (25 MiB). Anything over a limit is a verification failure.
+- Hard limits (defaults in `ArchiveLimits`): ≤ 1,000,000 clips, ≤ 500,000 listed files, `clips.jsonl` ≤ 16 GiB (bounds hashing time) with lines ≤ 32 MiB (5 MiB text ceiling plus JSON escaping), `library.json` ≤ 64 MiB, attachments ≤ the capture image ceiling (25 MiB). Anything over a limit is a verification failure.
 
-**Verification is a point-in-time check, so reading does not trust it.** Files can change between verifying and reading. Every file the verifier or reader touches is opened component by component with `openat(..., O_NOFOLLOW)` (no link is followed at any level), and its size is taken from `fstat` on the descriptor that is then read, so what is checked is exactly what is opened. The reader reads no more than the declared size, re-hashes while streaming (a digest mismatch at the end of the stream aborts the import), and bounds every line. Records already delivered before such a failure are untrusted, which is why apply runs in batches.
+**Verification is a point-in-time check, so reading does not trust it.** Files can change between verifying and reading. Every file the verifier or reader touches is opened component by component with `openat(..., O_NOFOLLOW)` (no link is followed at any level) and `O_NONBLOCK` (a FIFO in the folder would otherwise block `open` forever; any non-regular file is refused as `notARegularFile`), and its size is taken from `fstat` on the descriptor that is then read, so what is checked is exactly what is opened. The reader reads no more than the declared size, re-hashes while streaming (a digest mismatch at the end of the stream aborts the import), and bounds every line. Records already delivered before such a failure are untrusted, which is why apply runs in batches.
 
 ### 2. Plan (dry run)
 

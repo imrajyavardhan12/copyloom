@@ -7,8 +7,9 @@ import Foundation
 /// are read. Opening by path would follow a symlink swapped in since, and
 /// checking size before a separate read leaves a gap. This opens each path
 /// component with `openat(..., O_NOFOLLOW)` (no link is ever followed, at any
-/// level) and reports the size from `fstat` on the descriptor that will be
-/// read, so what is checked is exactly what is opened.
+/// level), never blocks on special files (FIFOs, devices), and reports the
+/// size from `fstat` on the descriptor that will be read, so what is checked
+/// is exactly what is opened.
 enum ArchiveFileAccess {
   struct Opened {
     let handle: FileHandle
@@ -31,15 +32,23 @@ enum ArchiveFileAccess {
       directory = next
     }
 
-    let descriptor = openat(directory, last, O_RDONLY | O_NOFOLLOW)
+    // O_NONBLOCK is essential: opening a FIFO for reading otherwise blocks
+    // until some process opens the other end, so a hostile folder containing
+    // one would hang the app before the regular-file check below could run.
+    // It has no effect on reads from regular files.
+    let descriptor = openat(directory, last, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
     let code = errno
     Darwin.close(directory)
     guard descriptor >= 0 else { throw failure(code, relativePath) }
 
     var info = stat()
-    guard fstat(descriptor, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else {
+    guard fstat(descriptor, &info) == 0 else {
       Darwin.close(descriptor)
       throw ArchiveError.missingFile(relativePath)
+    }
+    guard (info.st_mode & S_IFMT) == S_IFREG else {
+      Darwin.close(descriptor)
+      throw ArchiveError.notARegularFile(relativePath)
     }
     return Opened(
       handle: FileHandle(fileDescriptor: descriptor, closeOnDealloc: true),

@@ -787,3 +787,109 @@ struct ArchiveChangeAfterVerifyTests {
     }
   }
 }
+
+// MARK: - Special files and size bounds (denial of service)
+
+/// Opening a FIFO for reading blocks until a writer appears, so a folder
+/// containing one could freeze the app. Special files must be refused without
+/// ever blocking.
+@Suite("Archive special files")
+struct ArchiveSpecialFileTests {
+  /// Replaces `url` with a FIFO. A helper thread opens the write end so that
+  /// an implementation that blocks on `open` is released (turning a hang into
+  /// a failing assertion) and gives up after a few seconds if nobody reads.
+  private func replaceWithFIFO(_ url: URL) throws {
+    try FileManager.default.removeItem(at: url)
+    #expect(mkfifo(url.path, 0o600) == 0)
+    let path = url.path
+    Thread.detachNewThread {
+      for _ in 0..<30 {
+        let descriptor = open(path, O_WRONLY | O_NONBLOCK)
+        if descriptor >= 0 {
+          close(descriptor)
+          return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+      }
+    }
+  }
+
+  @Test("a FIFO in place of a listed file is refused by verification")
+  func fifoRefusedByVerifier() throws {
+    let scratch = try Scratch()
+    let built = try build(in: scratch)
+    try replaceWithFIFO(built.url.appending(path: "library.json"))
+    #expect(throws: ArchiveError.notARegularFile("library.json")) {
+      try ArchiveVerifier().verify(at: built.url)
+    }
+  }
+
+  @Test("a FIFO in place of an attachment is refused by verification")
+  func fifoAttachmentRefusedByVerifier() throws {
+    let scratch = try Scratch()
+    let built = try build(in: scratch)
+    try replaceWithFIFO(built.url.appending(path: built.attachment.path))
+    #expect(throws: ArchiveError.notARegularFile(built.attachment.path)) {
+      try ArchiveVerifier().verify(at: built.url)
+    }
+  }
+
+  @Test("a FIFO swapped in after verification is refused by the reader")
+  func fifoRefusedByReader() throws {
+    let scratch = try Scratch()
+    let built = try build(in: scratch)
+    let archive = try ArchiveVerifier().verify(at: built.url)
+    try replaceWithFIFO(built.url.appending(path: "clips.jsonl"))
+    #expect(throws: ArchiveError.notARegularFile("clips.jsonl")) {
+      try ArchiveReader(archive: archive).forEachClip { _, _ in }
+    }
+  }
+
+  @Test("a FIFO manifest is refused, not waited on")
+  func fifoManifest() throws {
+    let scratch = try Scratch()
+    let built = try build(in: scratch)
+    try replaceWithFIFO(built.url.appending(path: "manifest.json"))
+    #expect(throws: ArchiveError.notARegularFile("manifest.json")) {
+      try ArchiveVerifier().verify(at: built.url)
+    }
+  }
+
+  @Test("a declared clips.jsonl over the size bound is refused before hashing")
+  func clipsFileTooLarge() throws {
+    let scratch = try Scratch()
+    let built = try build(in: scratch)
+    #expect(throws: ArchiveError.fileTooLarge("clips.jsonl")) {
+      try ArchiveVerifier(limits: ArchiveLimits(maxClipsFileBytes: 10)).verify(at: built.url)
+    }
+  }
+}
+
+// MARK: - Realistic scale
+
+@Suite("Archive at realistic scale")
+struct ArchiveScaleTests {
+  @Test("a library with thousands of images produces a manifest the default limits accept")
+  func manyAttachments() throws {
+    // The manifest lists every attachment (~250 bytes each), so a 1 MiB
+    // manifest cap would reject any library with more than ~4,000 images.
+    let scratch = try Scratch()
+    let writer = try ArchiveWriter(destination: scratch.archiveURL)
+    for index in 0..<6_000 {
+      var bytes = withUnsafeBytes(of: UInt32(index).littleEndian) { Data($0) }
+      bytes.append(contentsOf: [1, 2, 3, 4])
+      _ = try writer.addAttachment(data: bytes, fileExtension: "png")
+    }
+    let manifest = try writer.finish(library: .empty, createdBy: createdBy, now: epoch)
+    #expect(manifest.counts.attachments == 6_000)
+
+    let manifestSize = try #require(
+      (try FileManager.default.attributesOfItem(
+        atPath: scratch.archiveURL.appending(path: "manifest.json").path)[.size] as? NSNumber)?
+        .intValue)
+    #expect(manifestSize > 1 << 20)  // the case the old cap could not handle
+
+    let verified = try ArchiveVerifier().verify(at: scratch.archiveURL)
+    #expect(verified.manifest.counts.attachments == 6_000)
+  }
+}
