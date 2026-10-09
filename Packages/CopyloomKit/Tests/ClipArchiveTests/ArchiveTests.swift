@@ -650,6 +650,29 @@ struct ArchiveReaderTests {
     #expect(ContinuousClock.now - start < .seconds(3))
   }
 
+  @Test("every millisecond value the database can hold survives the round trip")
+  func millisecondsAreExact() throws {
+    // The database stores integer milliseconds; `Date` is a binary float of
+    // seconds. A naive format/parse can land one millisecond off, which would
+    // make a re-import look like a different timestamp.
+    struct Wrapper: Codable, Equatable { var at: Date }
+    let encoder = ArchiveCoding.encoder()
+    let decoder = ArchiveCoding.decoder()
+    var generator = SystemRandomNumberGenerator()
+    var samples: [Int64] = [0, 1, 999, 1_000, 1_800_000_000_123, 1_800_000_000_999]
+    for _ in 0..<20_000 {
+      samples.append(Int64.random(in: 1_500_000_000_000...2_500_000_000_000, using: &generator))
+    }
+    for milliseconds in samples {
+      let date = Date(timeIntervalSince1970: TimeInterval(milliseconds) / 1_000)
+      let data = try encoder.encode(Wrapper(at: date))
+      let back = try decoder.decode(Wrapper.self, from: data).at
+      let backMilliseconds = Int64((back.timeIntervalSince1970 * 1_000).rounded())
+      #expect(
+        backMilliseconds == milliseconds, "ms \(milliseconds) came back as \(backMilliseconds)")
+    }
+  }
+
   @Test("timestamps round-trip with millisecond precision in UTC")
   func dates() throws {
     let clip = textClip("t")

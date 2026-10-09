@@ -32,6 +32,7 @@ let package = Package(
             name: "ClipStore",
             dependencies: [
                 "ClipDomain",
+                "ClipArchive",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
@@ -54,6 +55,7 @@ let package = Package(
             name: "ClipStoreTests",
             dependencies: [
                 "ClipDomain",
+                "ClipArchive",
                 "ClipStore",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]

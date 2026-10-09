@@ -12,7 +12,13 @@ enum ArchiveCoding {
     if pretty { encoder.outputFormatting.insert(.prettyPrinted) }
     encoder.dateEncodingStrategy = .custom { date, encoder in
       var container = encoder.singleValueContainer()
-      try container.encode(date.formatted(dateStyle))
+      // The ISO formatter truncates fractional seconds, and a binary-float
+      // `Date` rarely sits exactly on a millisecond (…474.294 is stored as
+      // …474.29399990…), so a naive format lands one millisecond early for
+      // many values. Format the midpoint of the millisecond bucket instead.
+      let milliseconds = (date.timeIntervalSince1970 * 1_000).rounded()
+      let midpoint = Date(timeIntervalSince1970: (milliseconds + 0.5) / 1_000)
+      try container.encode(midpoint.formatted(dateStyle))
     }
     return encoder
   }

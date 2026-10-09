@@ -1,3 +1,4 @@
+import ClipArchive
 import ClipDomain
 import Foundation
 import GRDB
@@ -79,6 +80,11 @@ public final class AppDatabase: Sendable {
         appliedMigrations: appliedMigrations
       )
     }
+  }
+
+  /// The library as an export source (see `ArchiveExporter`).
+  public func archiveSource() -> any ClipArchiveSource {
+    GRDBArchiveSource(pool: pool, attachments: attachments)
   }
 
   public func close() throws {
