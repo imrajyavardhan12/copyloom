@@ -75,6 +75,45 @@ public enum LibraryTarget: Hashable, Sendable {
   case smart(UUID)
 }
 
+/// What an export produced. Counts only: skipped clips are never described.
+public struct LibraryExportSummary: Equatable, Sendable {
+  public let clips: Int
+  public let attachments: Int
+  public let skippedSensitive: Int
+  public let skippedQuarantinedImages: Int
+  public let skippedMissingAttachments: Int
+
+  public init(
+    clips: Int, attachments: Int, skippedSensitive: Int, skippedQuarantinedImages: Int,
+    skippedMissingAttachments: Int
+  ) {
+    self.clips = clips
+    self.attachments = attachments
+    self.skippedSensitive = skippedSensitive
+    self.skippedQuarantinedImages = skippedQuarantinedImages
+    self.skippedMissingAttachments = skippedMissingAttachments
+  }
+
+  public var skippedTotal: Int {
+    skippedSensitive + skippedQuarantinedImages + skippedMissingAttachments
+  }
+}
+
+/// Failures the export closure can name so the model can show a specific,
+/// fixed message. Anything else becomes a generic message: error text can
+/// carry paths or content and is never shown.
+public enum LibraryExportFailure: Error, Equatable, Sendable {
+  case destinationExists
+}
+
+public enum LibraryExportState: Equatable, Sendable {
+  case idle
+  case running
+  case cancelled
+  case failed(String)
+  case finished(LibraryExportSummary, name: String)
+}
+
 /// A computed, not-yet-persisted transform result for the selected clip.
 public struct TransformPreview: Equatable, Sendable {
   public let transformID: String
@@ -96,6 +135,7 @@ public final class LibraryModel {
   public private(set) var activeCollectionID: UUID?
   public private(set) var activeSmartQueryID: UUID?
   private var transformSession: TransformSession?
+  public private(set) var exportState: LibraryExportState = .idle
 
   @ObservationIgnored private let repository: any ClipRepository
   @ObservationIgnored private let parser: SearchQueryParser
@@ -105,6 +145,9 @@ public final class LibraryModel {
   @ObservationIgnored private let transformRegistry: TransformRegistry
   @ObservationIgnored private let transformOutputKind: @Sendable (String) -> ClipKind?
   @ObservationIgnored private let makeID: @Sendable () -> UUID
+  @ObservationIgnored private let libraryExporter:
+    (@Sendable (URL) async throws -> LibraryExportSummary)?
+  @ObservationIgnored private var exportTask: Task<LibraryExportSummary, Error>?
   // Same lazy-thumbnail shape as Quick Paste's model; the two converge when
   // a shared integration module lands (see ADR-0005).
   @ObservationIgnored private let thumbnails = NSCache<NSUUID, NSImage>()
@@ -116,8 +159,10 @@ public final class LibraryModel {
     calendar: Calendar = .current,
     transforms: TransformRegistry = .builtIn,
     transformOutputKind: @escaping @Sendable (String) -> ClipKind? = { _ in nil },
-    makeID: @escaping @Sendable () -> UUID = { UUID() }
+    makeID: @escaping @Sendable () -> UUID = { UUID() },
+    libraryExporter: (@Sendable (URL) async throws -> LibraryExportSummary)? = nil
   ) {
+    self.libraryExporter = libraryExporter
     self.transformRegistry = transforms
     self.transformOutputKind = transformOutputKind
     self.makeID = makeID
@@ -451,6 +496,44 @@ public final class LibraryModel {
     } else {
       await refresh()
     }
+  }
+
+  // MARK: - Export (M3 slice 6b)
+
+  /// Exports the whole library to `destination` (a path that must not exist).
+  /// A model built without an exporter refuses, mirroring the transform save
+  /// gate: nothing can be written out unless the privacy gates were wired.
+  public func exportLibrary(to destination: URL) async {
+    guard exportState != .running else { return }
+    guard let exporter = libraryExporter else {
+      exportState = .failed("Export is unavailable")
+      return
+    }
+    exportState = .running
+    let task = Task { try await exporter(destination) }
+    exportTask = task
+    do {
+      let summary = try await task.value
+      exportState = .finished(summary, name: destination.lastPathComponent)
+    } catch is CancellationError {
+      exportState = .cancelled
+    } catch LibraryExportFailure.destinationExists {
+      exportState = .failed("An item with that name already exists")
+    } catch {
+      exportState = .failed("The export could not be completed")
+    }
+    exportTask = nil
+  }
+
+  public func cancelExport() {
+    exportTask?.cancel()
+  }
+
+  /// Clears a finished, failed or cancelled result. A running export is
+  /// never interrupted by dismissing.
+  public func dismissExportResult() {
+    guard exportState != .running else { return }
+    exportState = .idle
   }
 
   public func imageData(for id: UUID) async -> Data? {

@@ -82,6 +82,9 @@ public final class AppDatabase: Sendable {
     }
   }
 
+  /// Number of schema migrations this build knows; recorded in exports.
+  public static var schemaVersion: Int { Migrations.makeMigrator().migrations.count }
+
   /// The library as an export source (see `ArchiveExporter`).
   public func archiveSource() -> any ClipArchiveSource {
     GRDBArchiveSource(pool: pool, attachments: attachments)

@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import ClipArchive
 import ClipDomain
 import ClipStore
 import ClipboardCapture
@@ -83,9 +84,33 @@ final class AppModel {
       // Transform results saved as clips pass the same text gate as a real
       // copy: size ceiling, sensitive detector, then kind classification.
       let outputGate = TextOutputGate()
+      // Export applies the same gate as capture to every stored text, and
+      // skips images whose OCR text was withheld. The gate is a required
+      // argument of `ArchiveExporter`, so it cannot be left out.
+      let archiveExporter = ArchiveExporter(
+        source: database.archiveSource(),
+        isExportable: { outputGate.kind(for: $0) != nil },
+        createdBy: ArchiveManifest.CreatedBy(
+          app: "Copyloom",
+          appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+            as? String ?? "0",
+          schemaVersion: AppDatabase.schemaVersion)
+      )
       let libraryModel = LibraryModel(
         repository: database.repository,
-        transformOutputKind: { outputGate.kind(for: $0) }
+        transformOutputKind: { outputGate.kind(for: $0) },
+        libraryExporter: { destination in
+          do {
+            let manifest = try await archiveExporter.export(to: destination)
+            return LibraryExportSummary(
+              clips: manifest.counts.clips, attachments: manifest.counts.attachments,
+              skippedSensitive: manifest.skipped.sensitive,
+              skippedQuarantinedImages: manifest.skipped.quarantinedImage,
+              skippedMissingAttachments: manifest.skipped.missingAttachment)
+          } catch ArchiveError.destinationExists {
+            throw LibraryExportFailure.destinationExists
+          }
+        }
       )
       self.libraryModel = libraryModel
       self.libraryWindowController = LibraryWindowController(model: libraryModel)

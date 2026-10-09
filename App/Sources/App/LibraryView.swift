@@ -89,6 +89,19 @@ struct LibraryView: View {
         } label: {
           Label("New collection", systemImage: "plus")
         }
+        if model.exportState == .running {
+          HStack(spacing: 6) {
+            ProgressView()
+              .controlSize(.small)
+            Button("Cancel Export") { model.cancelExport() }
+          }
+        }
+        Menu {
+          Button("Export Library…") { LibraryExportFlow.start(model: model) }
+            .disabled(model.exportState == .running)
+        } label: {
+          Label("More", systemImage: "ellipsis.circle")
+        }
         Picker("Density", selection: densitySelection) {
           Text("List").tag(LibraryDensity.list)
           Text("Cards").tag(LibraryDensity.cards)

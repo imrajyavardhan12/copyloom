@@ -1,5 +1,6 @@
 #if DEBUG
   import AppKit
+  import ClipArchive
   import ClipDomain
   import LibraryFeature
   import QuickPasteFeature
@@ -39,6 +40,7 @@
           try? await Task.sleep(for: .seconds(8))
           let output = FileManager.default.temporaryDirectory
           log("preview output: \(output.path)")
+          await exportCheck(libraryModel: libraryModel, into: output)
           for scheme in ["light", "dark"] {
             await PreviewSnapshots.renderAll(
               scheme: scheme, model: model, repository: repository,
@@ -50,6 +52,46 @@
         }
         NSApp.terminate(nil)
       }
+    }
+
+    /// Runs a real export through the app's own `LibraryModel` (so through the
+    /// production wiring and privacy gate), then verifies the result and
+    /// checks that the planted fake credential never reached the archive.
+    private static func exportCheck(libraryModel: LibraryModel, into directory: URL) async {
+      let destination = directory.appending(
+        path: "PreviewExport-\(UUID().uuidString)", directoryHint: .isDirectory)
+      await libraryModel.exportLibrary(to: destination)
+      guard case .finished(let summary, _) = libraryModel.exportState else {
+        log("export check FAILED: state \(libraryModel.exportState)")
+        return
+      }
+      log(
+        "export: clips=\(summary.clips) images=\(summary.attachments) "
+          + "skippedSensitive=\(summary.skippedSensitive) "
+          + "skippedQuarantined=\(summary.skippedQuarantinedImages) "
+          + "skippedMissing=\(summary.skippedMissingAttachments)")
+      do {
+        let verified = try ArchiveVerifier().verify(at: destination)
+        var read = 0
+        try ArchiveReader(archive: verified).forEachClip { _, result in
+          _ = try result.get()
+          read += 1
+        }
+        let marker = Data(PreviewFixtures.plantedCredential.utf8)
+        var leaked = false
+        for path in try FileManager.default.subpathsOfDirectory(atPath: destination.path) {
+          let url = destination.appending(path: path)
+          guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+          else { continue }
+          if try Data(contentsOf: url).range(of: marker) != nil { leaked = true }
+        }
+        log(
+          "export verified: records=\(read) unlisted=\(verified.unlistedFiles.count) credentialInArchive=\(leaked)"
+        )
+      } catch {
+        log("export check FAILED: verification threw \(error)")
+      }
+      libraryModel.dismissExportResult()
     }
 
     static func log(_ message: String) {
@@ -201,6 +243,10 @@
     private static let slack = App(bundleID: "com.tinyspeck.slackmacgap", name: "Slack")
     private static let finder = App(bundleID: "com.apple.finder", name: "Finder")
 
+    /// An obviously fake credential stored directly (bypassing capture) so the
+    /// export check can prove the gate re-screens stored text.
+    static let plantedCredential = "DATABASE_PASSWORD=correct-horse-battery-staple"
+
     @MainActor
     static func seed(into repository: any ClipRepository) async throws {
       let now = Date()
@@ -279,6 +325,7 @@
           text:
             "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.",
           app: notes, minutesAgo: 600),
+        Seed(kind: .text, text: plantedCredential, app: terminal, minutesAgo: 900),
       ]
 
       var collections: [String: UUID] = [:]

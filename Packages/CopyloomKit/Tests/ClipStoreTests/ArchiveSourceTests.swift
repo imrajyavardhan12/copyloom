@@ -267,3 +267,11 @@ struct ArchiveSourceTests {
     #expect(ArchiveFormat.attachmentExtensions == storeExtensions)
   }
 }
+
+@Suite("Archive schema version")
+struct ArchiveSchemaVersionTests {
+  @Test("the schema version recorded in exports is the migration count")
+  func schemaVersion() {
+    #expect(AppDatabase.schemaVersion == 6)
+  }
+}
