@@ -71,10 +71,12 @@ struct ImageAcceptanceGateTests {
 
   @Test("a preflight that overruns the timeout is refused, not waited on")
   func timeout() async {
-    let slow = CountingPreflight(.allow(width: 1, height: 1), delay: .seconds(30))
+    let slow = CountingPreflight(.allow(width: 1, height: 1), delay: .seconds(300))
     let started = ContinuousClock.now
     let verdict = await gate(slow, timeout: 0.05).evaluate(data: Data([1]), uti: "public.png")
     #expect(verdict == .skip(.preflightTimeout))
-    #expect(ContinuousClock.now - started < .seconds(5))
+    // Far below the preflight's delay, far above a slow traced runner (hosted
+    // CodeQL took 8.7 s against an earlier 5 s bound).
+    #expect(ContinuousClock.now - started < .seconds(100))
   }
 }
