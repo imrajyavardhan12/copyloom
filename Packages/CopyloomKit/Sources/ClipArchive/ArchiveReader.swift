@@ -56,7 +56,7 @@ public struct ArchiveReader: Sendable {
   public func forEachClip(
     _ body: (_ line: Int, _ result: Result<ClipRecord, ArchiveRecordError>) throws -> Void
   ) throws {
-    var source = try openClipLines()
+    let source = try openClipLines()
     defer { source.close() }
     let decoder = ArchiveCoding.decoder()
     while let lines = try source.nextLines() {
@@ -72,7 +72,7 @@ public struct ArchiveReader: Sendable {
   public func streamClips(
     _ body: (_ line: Int, _ result: Result<ClipRecord, ArchiveRecordError>) async throws -> Void
   ) async throws {
-    var source = try openClipLines()
+    let source = try openClipLines()
     defer { source.close() }
     let decoder = ArchiveCoding.decoder()
     while let lines = try source.nextLines() {

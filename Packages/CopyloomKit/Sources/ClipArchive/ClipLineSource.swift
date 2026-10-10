@@ -8,7 +8,11 @@ import Foundation
 /// memory stays bounded by one chunk plus one unfinished line. The final call
 /// flushes the unterminated tail, then verifies the total size and the digest
 /// and throws on any mismatch; it returns nil once the stream is done.
-struct ClipLineSource: ~Copyable {
+///
+/// A class, confined to the one reader that pulls from it. A `~Copyable`
+/// struct with this throwing initializer crashed at run time on the Swift 6.1
+/// compiler that hosted CI uses.
+final class ClipLineSource {
   private let handle: FileHandle
   private let entry: ArchiveManifest.FileEntry
   private let maxLineBytes: Int
@@ -31,7 +35,7 @@ struct ClipLineSource: ~Copyable {
 
   func close() { try? handle.close() }
 
-  mutating func nextLines() throws -> [(number: Int, line: Data)]? {
+  func nextLines() throws -> [(number: Int, line: Data)]? {
     guard !finished else { return nil }
     guard let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty else {
       finished = true
@@ -65,7 +69,7 @@ struct ClipLineSource: ~Copyable {
 
   /// Enforced here too, not only at verification: a line is untrusted input
   /// to the JSON decoder until proven otherwise.
-  private mutating func take(_ line: Data) throws -> (number: Int, line: Data) {
+  private func take(_ line: Data) throws -> (number: Int, line: Data) {
     guard line.count <= maxLineBytes else { throw ArchiveError.lineTooLong }
     lineNumber += 1
     return (lineNumber, Data(line))
