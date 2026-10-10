@@ -241,6 +241,24 @@ Untrusted apps/users ─▶ global NSPasteboard ─▶ capture policy ─▶ in-
 - suspend during secure input/password contexts where detectable and offer per-app exclusions;
 - no expansion of Vault/sensitive clips initially.
 
+
+### T14 — A hostile or damaged archive is imported
+
+Import is the first place bytes that someone else authored reach storage. An archive is plain files, so anyone with write access to the folder can change any of them, the manifest included.
+
+**Mitigations:**
+
+- the archive is a logical record format, never a database: no foreign SQL, triggers, views or FTS shadow tables run;
+- verification is read-only and happens before any record is decoded: manifest size cap, a three-shape path whitelist (no `..`, absolute, empty or symlinked components), size and SHA-256 of every listed file, archive digest, counts, and hard limits on clips, files, lines and attachment size;
+- verification is a point-in-time check, so reading does not trust it: files are opened without following links and without blocking on FIFOs, sizes come from the open descriptor, reads are bounded and re-hashed, and a digest mismatch at the end of the stream aborts the import (the final partial batch is never written);
+- every text goes through the capture text gate and every image through the capture image gate (byte and pixel ceilings, decode, Vision privacy preflight under a timeout); both gates are required arguments and an unwired importer refuses everything;
+- nothing derived is trusted: kind is re-derived from the content, hashes and OCR text are recomputed under the current policy, image dimensions come from the decode, counters and timestamps are bounded (future dates are clamped so a clip cannot become immune to retention), and each record that breaks a bound is rejected alone without failing a batch;
+- merge never overwrites: an existing clip only gains a pin/favorite, an earlier creation time and missing tags or memberships; counters, last-seen time, sources, search text, OCR state and the names of known applications and tags are never touched, and importing the same archive twice changes nothing (tested over every table and the attachment files);
+- the plan phase has no side effects and decides exactly as the import will; the user sees counts, never content, and a warning when imported history is older than the retention window would keep;
+- reports and errors carry counts and fixed wording only.
+
+**Residual risk:** the manifest is integrity, not authenticity; a malicious archive that passes the gates is stored like any copy. Heuristic detectors can still miss a secret in an archive, as at capture. Verifying a very large archive hashes every file twice (plan, then import) and cannot be cancelled while hashing.
+
 ## Privacy defaults
 
 Proposed defaults requiring product confirmation:

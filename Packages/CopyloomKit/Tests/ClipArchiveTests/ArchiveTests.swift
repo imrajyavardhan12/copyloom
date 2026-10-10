@@ -633,9 +633,10 @@ struct ArchiveReaderTests {
     // reading quadratic in lines-per-chunk. One million one-byte lines put
     // ~500k lines in each 1 MiB chunk. Measured: the quadratic reader took
     // 9.1 s (debug) and 9.5 s (release); the linear one takes 0.4 s (debug)
-    // and 0.08 s (release). The 3 s bound fails the old behavior and leaves
-    // ~8x headroom for slow CI. Blank lines keep this about the reader's
-    // loop, not JSON decoding.
+    // and 0.08 s (release). Hosted CodeQL runs the suite under build tracing
+    // and measured the linear reader at 4.0-4.3 s, so the bound is 6 s: still
+    // below the quadratic reader (9 s untraced, more when traced). Blank lines
+    // keep this about the reader's loop, not JSON decoding.
     let scratch = try Scratch()
     let count = 1_000_000
     let verified = try archive(lines: Array(repeating: " ", count: count), in: scratch)
@@ -647,7 +648,56 @@ struct ArchiveReaderTests {
     }
 
     #expect(seen == count)
-    #expect(ContinuousClock.now - start < .seconds(3))
+    #expect(ContinuousClock.now - start < .seconds(6))
+  }
+
+  @Test("the async stream delivers the same records as the sync one and may suspend")
+  func asyncStreamMatchesSync() async throws {
+    let scratch = try Scratch()
+    let good = try encoded(textClip("ok"))
+    let verified = try archive(lines: [good, "{not json", good, " "], in: scratch)
+    let expected = try results(of: verified).map { $0.0 }
+
+    var lines: [Int] = []
+    var failures = 0
+    try await ArchiveReader(archive: verified).streamClips { line, result in
+      await Task.yield()
+      lines.append(line)
+      if case .failure = result { failures += 1 }
+    }
+    #expect(lines == expected)
+    #expect(failures == 2)
+  }
+
+  @Test("the async stream catches an in-place edit by the end of the stream")
+  func asyncStreamDigest() async throws {
+    let scratch = try Scratch()
+    let verified = try archive(
+      lines: [try encoded(textClip("ok")), try encoded(textClip("two"))], in: scratch)
+    let url = verified.root.appending(path: "clips.jsonl")
+    var data = try Data(contentsOf: url)
+    data[data.count - 3] ^= 0x01
+    try data.write(to: url)
+    await #expect(throws: ArchiveError.digestMismatch("clips.jsonl")) {
+      try await ArchiveReader(archive: verified).streamClips { _, _ in await Task.yield() }
+    }
+  }
+
+  @Test("cancelling the task stops an async stream between records")
+  func asyncStreamCancellation() async throws {
+    let scratch = try Scratch()
+    let verified = try archive(lines: Array(repeating: " ", count: 50_000), in: scratch)
+    let task = Task {
+      var seen = 0
+      try await ArchiveReader(archive: verified).streamClips { _, _ in
+        seen += 1
+        await Task.yield()
+        if seen == 10 { withUnsafeCurrentTask { $0?.cancel() } }
+        try Task.checkCancellation()
+      }
+      return seen
+    }
+    await #expect(throws: CancellationError.self) { try await task.value }
   }
 
   @Test("every millisecond value the database can hold survives the round trip")

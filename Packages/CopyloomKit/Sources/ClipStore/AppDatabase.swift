@@ -90,6 +90,11 @@ public final class AppDatabase: Sendable {
     GRDBArchiveSource(pool: pool, attachments: attachments)
   }
 
+  /// The library as an import sink (see `ArchiveImporter`).
+  public func archiveSink() -> any ClipArchiveSink {
+    GRDBArchiveSink(pool: pool, attachments: attachments)
+  }
+
   public func close() throws {
     try pool.close()
   }

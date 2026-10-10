@@ -1,7 +1,7 @@
 # Archive Format v1 (Export / Import)
 
-_Status: accepted design for M3 slice 6; 6a and 6b implemented._
-_Updated: 2026-10-05_
+_Status: accepted design for M3 slice 6; 6a, 6b and 6c implemented._
+_Updated: 2026-10-10_
 _Supersedes the sketch in [ADR 0005](decisions/0005-library.md) §6 ("SQLite online backup + attachments + manifest"); see [Decision 1](#decision-1-a-logical-archive-not-a-database-snapshot)._
 
 ## Goal
@@ -198,4 +198,22 @@ Each slice leaves `main` green and is useful on its own (6b alone is a verified 
 1. **Scope:** v1 exports the **whole library** only. Exporting a collection or Smart Collection is the next step; the format already supports it (a filtered record set), so it needs no format change.
 2. **Archive type:** v1 uses an **ordinary folder name** and does not register a `.copyloom` type. Registration is deferred until the format has survived real use, because the extension is hard to change once archives exist in the wild.
 
-Status: design accepted. **6a (format core)** and **6b (export)** implemented: `ClipArchive` (records, manifest, path whitelist, writer, verifier, reader, exporter), a database-backed source in `ClipStore`, and **Library → ··· → Export Library…**. 6c (import) pending.
+Status: design accepted and implemented. **6a (format core)**, **6b (export)** and **6c (import)**: `ClipArchive` (records, manifest, path whitelist, writer, verifier, reader, exporter, importer), database-backed source and sink in `ClipStore`, and **Library → ··· → Export Library… / Import Library…**.
+
+## Import as built (6c)
+
+Choices the design left open, and where the implementation is stricter than the sketch above:
+
+- **One pipeline for plan and apply.** `ArchiveImporter.plan` and `.apply` run the same validation, gates and classification; only the sink call differs (`classifyClips` is read-only, `applyClips` writes). On an unchanged library the plan equals the report (tested, including a library that already holds part of the archive).
+- **Order:** read and validate `library.json`; create tags from it (so display names win over the bare normalized names clip records carry); stream clips in batches (500 clips or 64 MiB of image bytes, whichever comes first); then collections, memberships and saved queries. The last partial batch is only written after the whole clips file has re-verified its digest.
+- **Gates are required arguments.** Text: `TextOutputGate`. Images: `ImageAcceptanceGate` (byte and pixel ceilings, decode, Vision privacy preflight under its timeout), shared with capture. Because the preflight runs OCR, importing many images is slow by design; it is the same screening a new copy gets.
+- **Derived, not trusted.** Stored kind comes from the gate, except that a `file` record keeps `file` (capture stores file references without classifying them, and multi-path clips would otherwise round-trip as text). Image width and height come from the decode. Exactly one representation per clip is imported (`public.utf8-plain-text` text, or one image whose type matches its path extension).
+- **Bounds, per record.** `copyCount` 1…1e9, `useCount` 0…1e9, otherwise the record is rejected (a schema CHECK must never fail a whole batch). Timestamps after the import time are clamped to it (a hostile `lastSeenAt` of year 9999 would make a clip immune to retention) and last-seen never precedes created. At most 50 sources and 100 tags per clip, names bounded; invalid or excess sources and tags are dropped and counted while the clip is kept.
+- **Identity.** Content is looked up first by the recomputed dedupe hash and merged if found, whatever its UUID. Only new content checks the UUID, against all rows (tombstones included, since `uuid` is unique across them), and gets a fresh UUID on a clash. This order makes re-importing a reassigned clip converge. Collection membership follows the clip's UUID in the library, not the archive's.
+- **Merge writes exactly:** `is_pinned`/`is_favorite` can become true, `created_at` can move earlier, tags and memberships are added. Nothing else on an existing clip changes, and an archive cannot rename an application or tag the library already knows (capture's upsert does rename applications; import deliberately uses `DO NOTHING`).
+- **Collections.** Matched by UUID; an existing collection keeps its name and gains members. A parent link is kept only if it names another collection in the archive and its owner is not on a cycle; parents are created first. New memberships are placed after existing items in archive order. Saved queries match by UUID; a different `queryVersion` is skipped and counted.
+- **Plan wording.** The plan reports counts only. In-archive duplicates are not predicted (the import merges them), so a hand-built archive may add slightly fewer clips than planned; archives made by export cannot contain them.
+- **Retention warning** is computed on the state after merge: for each clip, last-seen and protection as the library will hold them, against the cutoff derived from Settings. The confirmation defaults to Cancel when it is non-zero.
+- **Failure and cancellation.** Cancelling between records or batches leaves a valid partial import; re-running completes it. A sink failure stops the import. An attachment or clips file that changed after verification aborts with a fixed message that says earlier batches were kept.
+
+Not measured yet: import throughput and peak memory at 100k clips (tracked under Scale above).

@@ -1204,7 +1204,7 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     }
   }
 
-  private static func upsertAttachment(
+  static func upsertAttachment(
     digest: Data,
     uti: String,
     byteCount: Int,
@@ -1358,11 +1358,11 @@ struct GRDBClipRepository: ClipRepository, Sendable {
 }
 
 extension Date {
-  fileprivate var millisecondsSince1970: Int64 {
+  var millisecondsSince1970: Int64 {
     Int64((timeIntervalSince1970 * 1_000).rounded())
   }
 
-  fileprivate init(millisecondsSince1970: Int64) {
+  init(millisecondsSince1970: Int64) {
     self.init(timeIntervalSince1970: TimeInterval(millisecondsSince1970) / 1_000)
   }
 }

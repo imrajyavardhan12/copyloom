@@ -96,9 +96,12 @@ struct LibraryView: View {
             Button("Cancel Export") { model.cancelExport() }
           }
         }
+        importProgress
         Menu {
           Button("Export Library…") { LibraryExportFlow.start(model: model) }
             .disabled(model.exportState == .running)
+          Button("Import Library…") { LibraryImportFlow.start(model: model) }
+            .disabled(importIsBusy)
         } label: {
           Label("More", systemImage: "ellipsis.circle")
         }
@@ -146,6 +149,43 @@ struct LibraryView: View {
         }
       }
     )
+  }
+
+  private var importIsBusy: Bool {
+    switch model.importState {
+    case .checking, .importing: true
+    default: false
+    }
+  }
+
+  /// Progress and Cancel for a running import check or import. Checking can
+  /// take a while on a large export (every file is hashed) and writes nothing.
+  @ViewBuilder
+  private var importProgress: some View {
+    switch model.importState {
+    case .checking:
+      HStack(spacing: 6) {
+        ProgressView()
+          .controlSize(.small)
+        Text("Checking export…")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Button("Cancel Import") { model.cancelImport() }
+      }
+    case .importing:
+      HStack(spacing: 6) {
+        if let progress = model.importProgress, progress.total > 0 {
+          ProgressView(value: Double(progress.processed), total: Double(progress.total))
+            .frame(width: 80)
+        } else {
+          ProgressView()
+            .controlSize(.small)
+        }
+        Button("Cancel Import") { model.cancelImport() }
+      }
+    default:
+      EmptyView()
+    }
   }
 
   private var densitySelection: Binding<LibraryDensity> {

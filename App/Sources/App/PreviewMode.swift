@@ -2,6 +2,8 @@
   import AppKit
   import ClipArchive
   import ClipDomain
+  import ClipStore
+  import ClipboardCapture
   import LibraryFeature
   import QuickPasteFeature
   import SwiftUI
@@ -40,7 +42,9 @@
           try? await Task.sleep(for: .seconds(8))
           let output = FileManager.default.temporaryDirectory
           log("preview output: \(output.path)")
-          await exportCheck(libraryModel: libraryModel, into: output)
+          if let archive = await exportCheck(libraryModel: libraryModel, into: output) {
+            await importCheck(archive: archive, into: output)
+          }
           for scheme in ["light", "dark"] {
             await PreviewSnapshots.renderAll(
               scheme: scheme, model: model, repository: repository,
@@ -57,13 +61,14 @@
     /// Runs a real export through the app's own `LibraryModel` (so through the
     /// production wiring and privacy gate), then verifies the result and
     /// checks that the planted fake credential never reached the archive.
-    private static func exportCheck(libraryModel: LibraryModel, into directory: URL) async {
+    @discardableResult
+    private static func exportCheck(libraryModel: LibraryModel, into directory: URL) async -> URL? {
       let destination = directory.appending(
         path: "PreviewExport-\(UUID().uuidString)", directoryHint: .isDirectory)
       await libraryModel.exportLibrary(to: destination)
       guard case .finished(let summary, _) = libraryModel.exportState else {
         log("export check FAILED: state \(libraryModel.exportState)")
-        return
+        return nil
       }
       log(
         "export: clips=\(summary.clips) images=\(summary.attachments) "
@@ -90,8 +95,88 @@
         )
       } catch {
         log("export check FAILED: verification threw \(error)")
+        libraryModel.dismissExportResult()
+        return nil
       }
       libraryModel.dismissExportResult()
+      return destination
+    }
+
+    /// Imports the export into a throwaway database through the production
+    /// import wiring (text gate, Vision image gate, merge rules), twice to
+    /// show the second run adds nothing, then offers it a hostile archive
+    /// carrying the planted fake credential, which the gate must refuse.
+    private static func importCheck(archive: URL, into directory: URL) async {
+      let scratch = directory.appending(
+        path: "PreviewImport-\(UUID().uuidString)", directoryHint: .isDirectory)
+      do {
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        let database = try AppDatabase.open(at: scratch.appending(path: "copyloom.sqlite"))
+        defer {
+          try? database.close()
+          try? FileManager.default.removeItem(at: scratch)
+        }
+        let actions = LibraryImportWiring.actions(
+          database: database, textGate: TextOutputGate(),
+          imageGate: ImageAcceptanceGate(
+            preflight: VisionImagePreflight(), configuration: CaptureConfiguration()),
+          retentionDays: { 30 })
+        let model = LibraryModel(
+          repository: database.repository, libraryImportPlanner: actions.plan,
+          libraryImporter: actions.apply)
+
+        func run(_ folder: URL, label: String) async -> LibraryImportSummary? {
+          await model.prepareImport(from: folder)
+          guard case .confirming = model.importState else {
+            log("import check \(label): plan FAILED, state \(model.importState)")
+            model.dismissImportResult()
+            return nil
+          }
+          await model.confirmImport()
+          defer { model.dismissImportResult() }
+          guard case .finished(let summary, _) = model.importState else {
+            log("import check \(label): FAILED, state \(model.importState)")
+            return nil
+          }
+          return summary
+        }
+
+        if let first = await run(archive, label: "first") {
+          log(
+            "import first: added=\(first.clipsAdded) present=\(first.clipsAlreadyPresent) "
+              + "images=\(first.imagesQueuedForOCR) rejected=\(first.rejectedTotal) "
+              + "collections=\(first.collectionsAdded) queries=\(first.queriesAdded) "
+              + "retentionAtRisk=\(first.retentionAtRisk)")
+        }
+        if let second = await run(archive, label: "second") {
+          log(
+            "import second: added=\(second.clipsAdded) present=\(second.clipsAlreadyPresent) "
+              + "(idempotent=\(second.clipsAdded == 0))")
+        }
+
+        let hostile = scratch.appending(path: "Hostile", directoryHint: .isDirectory)
+        let writer = try ArchiveWriter(destination: hostile)
+        try writer.addClip(
+          ClipRecord(
+            uuid: UUID(), kind: .text, createdAt: .now, lastSeenAt: .now, lastUsedAt: nil,
+            copyCount: 1, useCount: 0, isPinned: false, isFavorite: false,
+            representations: [
+              RepresentationRecord(
+                uti: ArchiveFormat.textUTI, text: PreviewFixtures.plantedCredential)
+            ], sources: [], tags: []))
+        try writer.finish(
+          library: .empty,
+          createdBy: ArchiveManifest.CreatedBy(app: "Copyloom", appVersion: "0", schemaVersion: 0))
+        if let hostileResult = await run(hostile, label: "hostile") {
+          let stored = try await database.repository.recent(limit: 200)
+            .contains { $0.text.contains(PreviewFixtures.plantedCredential) }
+          log(
+            "import hostile: added=\(hostileResult.clipsAdded) refused=\(hostileResult.rejectedByPrivacy) "
+              + "credentialStored=\(stored)")
+        }
+      } catch {
+        log("import check FAILED: \(error)")
+      }
     }
 
     static func log(_ message: String) {

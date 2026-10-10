@@ -75,6 +75,7 @@ Preview mode:
 
 - uses a separate `Copyloom-Preview` database seeded with obviously synthetic clips, so it never reads or writes real history;
 - never starts clipboard capture or retention cleanup;
+- runs a real export, then a real import of that export into a throwaway database through the production wiring (including the Vision image gate), twice, and offers it a hostile archive carrying the planted fake credential. Expect on stderr: `import first: added=N present=0`, `import second: added=0 present=N (idempotent=true)`, and `import hostile: added=0 refused=1 credentialStored=false`;
 - renders the Library (list, cards, transform preview, image, colors, empty state), Quick Paste and Settings in light and dark, then quits;
 - renders in-process (`NSHostingView` + `cacheDisplay`), so it needs no Screen Recording permission. PNGs land in the sandbox container's temporary directory (`~/Library/Containers/io.github.imrajyavardhan12.copyloom/Data/tmp/`) and the path is printed to stderr.
 

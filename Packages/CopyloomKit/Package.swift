@@ -57,6 +57,7 @@ let package = Package(
                 "ClipDomain",
                 "ClipArchive",
                 "ClipStore",
+                "ClipboardCapture",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),

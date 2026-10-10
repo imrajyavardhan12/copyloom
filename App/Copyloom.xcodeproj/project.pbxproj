@@ -26,6 +26,8 @@
 		A200000000000000000000FA /* PreviewMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000000FA /* PreviewMode.swift */; };
 		A200000000000000000000FB /* ClipPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000000FB /* ClipPresentation.swift */; };
 		A200000000000000000000FC /* LibraryExportFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000000FC /* LibraryExportFlow.swift */; };
+		A200000000000000000000FD /* LibraryImportWiring.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000000FD /* LibraryImportWiring.swift */; };
+		A200000000000000000000FE /* LibraryImportFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000000FE /* LibraryImportFlow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,6 +47,8 @@
 		A300000000000000000000FA /* PreviewMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewMode.swift; sourceTree = "<group>"; };
 		A300000000000000000000FB /* ClipPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipPresentation.swift; sourceTree = "<group>"; };
 		A300000000000000000000FC /* LibraryExportFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryExportFlow.swift; sourceTree = "<group>"; };
+		A300000000000000000000FD /* LibraryImportWiring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryImportWiring.swift; sourceTree = "<group>"; };
+		A300000000000000000000FE /* LibraryImportFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryImportFlow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -96,6 +100,8 @@
 				A300000000000000000000FA /* PreviewMode.swift */,
 				A300000000000000000000FB /* ClipPresentation.swift */,
 				A300000000000000000000FC /* LibraryExportFlow.swift */,
+				A300000000000000000000FD /* LibraryImportWiring.swift */,
+				A300000000000000000000FE /* LibraryImportFlow.swift */,
 				A3000000000000000000000A /* SettingsView.swift */,
 			);
 			path = App;
@@ -199,6 +205,8 @@
 				A200000000000000000000FA /* PreviewMode.swift in Sources */,
 				A200000000000000000000FB /* ClipPresentation.swift in Sources */,
 				A200000000000000000000FC /* LibraryExportFlow.swift in Sources */,
+				A200000000000000000000FD /* LibraryImportWiring.swift in Sources */,
+				A200000000000000000000FE /* LibraryImportFlow.swift in Sources */,
 				A2000000000000000000000C /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

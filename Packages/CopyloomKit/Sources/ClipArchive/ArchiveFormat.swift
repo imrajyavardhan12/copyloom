@@ -102,3 +102,19 @@ public struct ArchiveRecordError: Error, Equatable, Sendable {
     self.reason = reason
   }
 }
+
+extension ArchiveFormat {
+  /// The archive file extension for an image type, or nil if the type is not
+  /// carried. Mirrors `AttachmentStore`; a `ClipStore` test keeps them equal.
+  public static func fileExtension(forUTI uti: String) -> String? {
+    switch uti.lowercased() {
+    case "public.png": "png"
+    case "public.tiff": "tiff"
+    case "public.jpeg": "jpg"
+    default: nil
+    }
+  }
+
+  /// The only text representation capture stores.
+  public static let textUTI = "public.utf8-plain-text"
+}

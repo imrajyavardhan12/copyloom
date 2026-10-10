@@ -96,6 +96,16 @@ final class AppModel {
             as? String ?? "0",
           schemaVersion: AppDatabase.schemaVersion)
       )
+      // Import applies the same gates as capture to everything an archive
+      // carries (text gate, and the Vision-backed image gate), and nothing
+      // is written until the user has seen the plan.
+      let importActions = LibraryImportWiring.actions(
+        database: database,
+        textGate: outputGate,
+        imageGate: ImageAcceptanceGate(
+          preflight: VisionImagePreflight(), configuration: captureConfiguration()),
+        retentionDays: { [weak self] in await self?.retentionDays }
+      )
       let libraryModel = LibraryModel(
         repository: database.repository,
         transformOutputKind: { outputGate.kind(for: $0) },
@@ -110,7 +120,9 @@ final class AppModel {
           } catch ArchiveError.destinationExists {
             throw LibraryExportFailure.destinationExists
           }
-        }
+        },
+        libraryImportPlanner: importActions.plan,
+        libraryImporter: importActions.apply
       )
       self.libraryModel = libraryModel
       self.libraryWindowController = LibraryWindowController(model: libraryModel)

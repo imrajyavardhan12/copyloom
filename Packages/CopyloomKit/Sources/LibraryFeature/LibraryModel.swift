@@ -114,6 +114,83 @@ public enum LibraryExportState: Equatable, Sendable {
   case finished(LibraryExportSummary, name: String)
 }
 
+/// What an import will do (when shown for confirmation) or did (when
+/// finished). Counts only: a record is never described, so nothing here can
+/// carry clip content.
+public struct LibraryImportSummary: Equatable, Sendable {
+  public let clipsInArchive: Int
+  public let clipsAdded: Int
+  public let clipsAlreadyPresent: Int
+  public let imagesQueuedForOCR: Int
+  /// Text or images the same privacy rules as capture refused.
+  public let rejectedByPrivacy: Int
+  /// Records that were malformed or broke a bound.
+  public let rejectedInvalid: Int
+  public let collectionsAdded: Int
+  public let queriesAdded: Int
+  public let queriesSkipped: Int
+  /// Imported clips that the next retention cleanup would delete.
+  public let retentionAtRisk: Int
+  public let unlistedFiles: Int
+  /// Clips the exporting app left out (sensitive, withheld images, ...).
+  public let skippedAtExport: Int
+  /// The history window `retentionAtRisk` was measured against.
+  public let retentionDays: Int?
+
+  public init(
+    clipsInArchive: Int, clipsAdded: Int, clipsAlreadyPresent: Int, imagesQueuedForOCR: Int,
+    rejectedByPrivacy: Int, rejectedInvalid: Int, collectionsAdded: Int, queriesAdded: Int,
+    queriesSkipped: Int, retentionAtRisk: Int, unlistedFiles: Int, skippedAtExport: Int,
+    retentionDays: Int? = nil
+  ) {
+    self.retentionDays = retentionDays
+    self.clipsInArchive = clipsInArchive
+    self.clipsAdded = clipsAdded
+    self.clipsAlreadyPresent = clipsAlreadyPresent
+    self.imagesQueuedForOCR = imagesQueuedForOCR
+    self.rejectedByPrivacy = rejectedByPrivacy
+    self.rejectedInvalid = rejectedInvalid
+    self.collectionsAdded = collectionsAdded
+    self.queriesAdded = queriesAdded
+    self.queriesSkipped = queriesSkipped
+    self.retentionAtRisk = retentionAtRisk
+    self.unlistedFiles = unlistedFiles
+    self.skippedAtExport = skippedAtExport
+  }
+
+  public var rejectedTotal: Int { rejectedByPrivacy + rejectedInvalid }
+}
+
+/// Reasons an archive was refused that the importer closure can name, so the
+/// model shows a fixed message. Anything else becomes a generic message.
+public enum LibraryImportFailure: Error, Equatable, Sendable {
+  case notAnArchive
+  case incomplete
+  case newerVersion
+  /// Failed the integrity, path-safety or size checks.
+  case damaged
+  /// Failed re-verification part-way through writing. Earlier batches are
+  /// already in the library, so the message must not claim otherwise.
+  case changedDuringImport
+}
+
+public struct LibraryImportProgress: Equatable, Sendable {
+  public let processed: Int
+  public let total: Int
+}
+
+public enum LibraryImportState: Equatable, Sendable {
+  case idle
+  /// Verifying the archive and working out the plan. Nothing is written.
+  case checking(name: String)
+  /// The plan is ready; nothing happens until the user confirms.
+  case confirming(LibraryImportSummary, name: String)
+  case importing
+  case cancelled
+  case failed(String)
+  case finished(LibraryImportSummary, name: String)
+}
+
 /// A computed, not-yet-persisted transform result for the selected clip.
 public struct TransformPreview: Equatable, Sendable {
   public let transformID: String
@@ -136,6 +213,8 @@ public final class LibraryModel {
   public private(set) var activeSmartQueryID: UUID?
   private var transformSession: TransformSession?
   public private(set) var exportState: LibraryExportState = .idle
+  public private(set) var importState: LibraryImportState = .idle
+  public private(set) var importProgress: LibraryImportProgress?
 
   @ObservationIgnored private let repository: any ClipRepository
   @ObservationIgnored private let parser: SearchQueryParser
@@ -148,6 +227,10 @@ public final class LibraryModel {
   @ObservationIgnored private let libraryExporter:
     (@Sendable (URL) async throws -> LibraryExportSummary)?
   @ObservationIgnored private var exportTask: Task<LibraryExportSummary, Error>?
+  @ObservationIgnored private let libraryImportPlanner: ImportAction?
+  @ObservationIgnored private let libraryImporter: ImportAction?
+  @ObservationIgnored private var importTask: Task<LibraryImportSummary, Error>?
+  @ObservationIgnored private var pendingImport: URL?
   // Same lazy-thumbnail shape as Quick Paste's model; the two converge when
   // a shared integration module lands (see ADR-0005).
   @ObservationIgnored private let thumbnails = NSCache<NSUUID, NSImage>()
@@ -160,9 +243,13 @@ public final class LibraryModel {
     transforms: TransformRegistry = .builtIn,
     transformOutputKind: @escaping @Sendable (String) -> ClipKind? = { _ in nil },
     makeID: @escaping @Sendable () -> UUID = { UUID() },
-    libraryExporter: (@Sendable (URL) async throws -> LibraryExportSummary)? = nil
+    libraryExporter: (@Sendable (URL) async throws -> LibraryExportSummary)? = nil,
+    libraryImportPlanner: ImportAction? = nil,
+    libraryImporter: ImportAction? = nil
   ) {
     self.libraryExporter = libraryExporter
+    self.libraryImportPlanner = libraryImportPlanner
+    self.libraryImporter = libraryImporter
     self.transformRegistry = transforms
     self.transformOutputKind = transformOutputKind
     self.makeID = makeID
@@ -534,6 +621,104 @@ public final class LibraryModel {
   public func dismissExportResult() {
     guard exportState != .running else { return }
     exportState = .idle
+  }
+
+  // MARK: - Import (M3 slice 6c)
+
+  /// Reads an archive folder and works out what importing would do. Writes
+  /// nothing; the user confirms with `confirmImport()`. The planner and the
+  /// importer are both required: a model built without them refuses, so no
+  /// path exists that imports without the privacy gates being wired.
+  public typealias ImportAction =
+    @Sendable (URL, @escaping @Sendable (Int, Int) -> Void) async throws -> LibraryImportSummary
+
+  public func prepareImport(from folder: URL) async {
+    switch importState {
+    case .checking, .importing: return
+    default: break
+    }
+    guard let planner = libraryImportPlanner, libraryImporter != nil else {
+      importState = .failed("Import is unavailable")
+      return
+    }
+    let name = folder.lastPathComponent
+    importState = .checking(name: name)
+    pendingImport = nil
+    let task = Task { try await planner(folder) { _, _ in } }
+    importTask = task
+    do {
+      let plan = try await task.value
+      importState = .confirming(plan, name: name)
+      pendingImport = folder
+    } catch is CancellationError {
+      importState = .cancelled
+    } catch {
+      importState = .failed(Self.importMessage(for: error))
+    }
+    importTask = nil
+  }
+
+  /// Imports the archive `prepareImport` planned. Does nothing unless a plan
+  /// is waiting for confirmation.
+  public func confirmImport() async {
+    guard case .confirming(_, let name) = importState, let folder = pendingImport,
+      let importer = libraryImporter
+    else { return }
+    pendingImport = nil
+    importState = .importing
+    importProgress = nil
+    let report: @Sendable (Int, Int) -> Void = { [weak self] processed, total in
+      Task { @MainActor in self?.recordImportProgress(processed: processed, total: total) }
+    }
+    let task = Task { try await importer(folder, report) }
+    importTask = task
+    do {
+      let summary = try await task.value
+      importState = .finished(summary, name: name)
+    } catch is CancellationError {
+      importState = .cancelled
+    } catch {
+      importState = .failed(Self.importMessage(for: error))
+    }
+    importTask = nil
+    importProgress = nil
+    // Whatever was imported, even by a cancelled run, is already in the store.
+    await refresh()
+    await refreshCollections()
+  }
+
+  public func cancelImport() {
+    importTask?.cancel()
+  }
+
+  /// Clears a result, or declines a plan that is waiting. A running check or
+  /// import is never interrupted by dismissing.
+  public func dismissImportResult() {
+    switch importState {
+    case .checking, .importing: return
+    default:
+      pendingImport = nil
+      importState = .idle
+    }
+  }
+
+  private func recordImportProgress(processed: Int, total: Int) {
+    guard importState == .importing, processed >= (importProgress?.processed ?? 0) else {
+      return
+    }
+    importProgress = LibraryImportProgress(processed: processed, total: total)
+  }
+
+  private static func importMessage(for error: Error) -> String {
+    switch error as? LibraryImportFailure {
+    case .notAnArchive: "That folder is not a Copyloom export."
+    case .incomplete: "That export is incomplete: it has no manifest."
+    case .newerVersion: "That export was made by a newer version of Copyloom."
+    case .damaged: "That export failed its integrity check, so nothing was imported."
+    case .changedDuringImport:
+      "That export changed while it was being imported. Clips imported before then were kept; run the import again to finish."
+    case nil: "The import could not be completed"
+    }
   }
 
   public func imageData(for id: UUID) async -> Data? {

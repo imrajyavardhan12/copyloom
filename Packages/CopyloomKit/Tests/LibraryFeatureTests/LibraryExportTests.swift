@@ -8,7 +8,7 @@ private let summary = LibraryExportSummary(
   clips: 12, attachments: 3, skippedSensitive: 2, skippedQuarantinedImages: 1,
   skippedMissingAttachments: 0)
 
-private actor Gate {
+actor Gate {
   private var continuation: CheckedContinuation<Void, Never>?
   private var opened = false
 
@@ -150,12 +150,12 @@ struct LibraryExportTests {
 }
 
 /// Minimal mutable box for capturing results from `@Sendable` closures in tests.
-private final class Box<Value>: @unchecked Sendable {
+final class Box<Value>: @unchecked Sendable {
   var value: Value
   init(_ value: Value) { self.value = value }
 }
 
-private actor ExportRepositoryStub: ClipRepository {
+actor ExportRepositoryStub: ClipRepository {
   func saveAcceptedText(_ clip: AcceptedTextClip) async throws -> ClipSummary {
     throw TestError.unexpected
   }

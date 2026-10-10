@@ -56,46 +56,36 @@ public struct ArchiveReader: Sendable {
   public func forEachClip(
     _ body: (_ line: Int, _ result: Result<ClipRecord, ArchiveRecordError>) throws -> Void
   ) throws {
-    guard let entry = clipsEntry else { throw ArchiveError.missingRequiredFile("clips.jsonl") }
-    let opened = try ArchiveFileAccess.open(root: archive.root, relativePath: entry.path)
-    defer { try? opened.handle.close() }
-    guard opened.size == entry.bytes else { throw ArchiveError.sizeMismatch(entry.path) }
-
+    var source = try openClipLines()
+    defer { source.close() }
     let decoder = ArchiveCoding.decoder()
-    var hasher = SHA256()
-    var buffer = Data()
-    var lineNumber = 0
-    var totalRead = 0
-
-    func process(_ line: Data) throws {
-      // Enforced here too, not only at verification: a line is untrusted
-      // input to the JSON decoder until proven otherwise.
-      guard line.count <= archive.limits.maxLineBytes else { throw ArchiveError.lineTooLong }
-      lineNumber += 1
-      try body(lineNumber, decode(line, number: lineNumber, decoder: decoder))
-    }
-
-    while let chunk = try opened.handle.read(upToCount: 1 << 20), !chunk.isEmpty {
-      totalRead += chunk.count
-      guard totalRead <= entry.bytes else { throw ArchiveError.sizeMismatch(entry.path) }
-      hasher.update(data: chunk)
-      buffer.append(chunk)
-      // Walk the chunk by offset and keep only the unfinished tail once per
-      // chunk. Re-slicing `buffer` after every line copies the remainder
-      // each time, which is quadratic in lines per chunk.
-      var start = buffer.startIndex
-      while let newline = buffer[start...].firstIndex(of: 0x0A) {
-        try process(buffer[start..<newline])
-        start = buffer.index(after: newline)
+    while let lines = try source.nextLines() {
+      for (number, line) in lines {
+        try body(number, decode(line, number: number, decoder: decoder))
       }
-      buffer = Data(buffer[start...])
-      guard buffer.count <= archive.limits.maxLineBytes else { throw ArchiveError.lineTooLong }
     }
-    if !buffer.isEmpty { try process(buffer) }
-    guard totalRead == entry.bytes else { throw ArchiveError.sizeMismatch(entry.path) }
-    guard ArchiveHashing.hex(hasher.finalize()) == entry.sha256 else {
-      throw ArchiveError.digestMismatch(entry.path)
+  }
+
+  /// The same stream for a consumer that must suspend between records (the
+  /// importer awaits storage). Both variants pull from one `ClipLineSource`,
+  /// so every size, bound and digest check exists exactly once.
+  public func streamClips(
+    _ body: (_ line: Int, _ result: Result<ClipRecord, ArchiveRecordError>) async throws -> Void
+  ) async throws {
+    var source = try openClipLines()
+    defer { source.close() }
+    let decoder = ArchiveCoding.decoder()
+    while let lines = try source.nextLines() {
+      for (number, line) in lines {
+        try await body(number, decode(line, number: number, decoder: decoder))
+      }
     }
+  }
+
+  private func openClipLines() throws -> ClipLineSource {
+    guard let entry = clipsEntry else { throw ArchiveError.missingRequiredFile("clips.jsonl") }
+    return try ClipLineSource(
+      root: archive.root, entry: entry, maxLineBytes: archive.limits.maxLineBytes)
   }
 
   private func decode(
