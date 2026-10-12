@@ -45,10 +45,11 @@ struct QuickPasteView: View {
   private var searchHeader: some View {
     HStack(spacing: 12) {
       Image(systemName: "magnifyingglass")
-        .foregroundStyle(.secondary)
+        .font(.system(size: 15, weight: .regular))
+        .foregroundStyle(.tertiary)
       TextField("Search copied text, links, or app:Safari", text: $query)
         .textFieldStyle(.plain)
-        .font(.system(size: 20, weight: .medium))
+        .font(.system(size: 18, weight: .regular))
         .focused($searchFocused)
         .accessibilityLabel("Search clipboard history")
       if model.isLoading {
@@ -65,8 +66,8 @@ struct QuickPasteView: View {
         .accessibilityLabel("Clear search")
       }
     }
-    .padding(.horizontal, 18)
-    .frame(height: 58)
+    .padding(.horizontal, 20)
+    .frame(height: 56)
   }
 
   @ViewBuilder
@@ -92,7 +93,7 @@ struct QuickPasteView: View {
     } else {
       ScrollViewReader { proxy in
         ScrollView {
-          LazyVStack(spacing: 5) {
+          LazyVStack(spacing: 2) {
             ForEach(Array(model.items.enumerated()), id: \.element.id) { index, clip in
               QuickPasteRow(
                 model: model,
@@ -111,7 +112,7 @@ struct QuickPasteView: View {
               }
             }
           }
-          .padding(10)
+          .padding(8)
         }
         .onChange(of: model.selectedIndex) { _, newIndex in
           guard model.items.indices.contains(newIndex) else { return }
@@ -130,19 +131,20 @@ struct QuickPasteView: View {
 
   private var footer: some View {
     HStack(spacing: 16) {
-      Text("↑↓ Navigate")
-      Text("Return: Paste")
-      Text("⌘Return: Copy only")
+      Text("↵ Paste")
+      Text("⌘↵ Copy only")
       Spacer()
-      Text("⌘P Pin")
-      Text("⌘F Favorite")
-      Text("⌥⌫ Delete")
-      Text("⌘1–9")
+      Group {
+        Text("⌘P Pin")
+        Text("⌘F Favorite")
+        Text("⌥⌫ Delete")
+      }
+      .foregroundStyle(.tertiary)
     }
-    .font(.caption)
+    .font(.system(size: 11.5))
     .foregroundStyle(.secondary)
-    .padding(.horizontal, 16)
-    .frame(height: 36)
+    .padding(.horizontal, 20)
+    .frame(height: 34)
   }
 }
 
@@ -162,7 +164,7 @@ private struct QuickPasteRow: View {
 
       VStack(alignment: .leading, spacing: 4) {
         Text(rowTitle)
-          .font(.system(size: 14, weight: .medium))
+          .font(.system(size: 14, weight: .regular))
           .lineLimit(2)
           .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -175,33 +177,38 @@ private struct QuickPasteRow: View {
             Text("Copied \(clip.copyCount)×")
           }
         }
-        .font(.caption)
-        .foregroundStyle(isSelected ? Color.white.opacity(0.78) : Color.secondary)
+        .font(.system(size: 11.5))
+        .foregroundStyle(.secondary)
       }
 
+      // Flags are monochrome: the glyph shapes already differ, and a lone
+      // yellow star would be the only color in the list.
       if clip.isFavorite {
         Image(systemName: "star.fill")
-          .foregroundStyle(.yellow)
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
           .accessibilityLabel("Favorite")
       }
 
       if clip.isPinned {
         Image(systemName: "pin.fill")
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
           .accessibilityLabel("Pinned")
       }
 
       if index < 9 {
         Text("⌘\(index + 1)")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(isSelected ? Color.white.opacity(0.78) : Color.secondary)
+          .font(.system(size: 11.5).monospacedDigit())
+          .foregroundStyle(isSelected ? Color.secondary : Color.secondary.opacity(0.55))
       }
     }
     .padding(.horizontal, 12)
-    .padding(.vertical, 9)
-    .foregroundStyle(isSelected ? Color.white : Color.primary)
+    .padding(.vertical, 8)
+    .foregroundStyle(Color.primary)
     .background(
-      isSelected ? Color.accentColor : Color.clear,
-      in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+      isSelected ? ClipStyle.selection : Color.clear,
+      in: RoundedRectangle(cornerRadius: ClipStyle.rowRadius, style: .continuous)
     )
     .accessibilityElement(children: .combine)
     .accessibilityLabel(accessibilityLabel)

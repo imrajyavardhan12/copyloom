@@ -262,9 +262,11 @@ struct LibraryView: View {
   private var searchHeader: some View {
     HStack(spacing: 12) {
       Image(systemName: "magnifyingglass")
-        .foregroundStyle(.secondary)
+        .font(.system(size: 13, weight: .regular))
+        .foregroundStyle(.tertiary)
       TextField("Search clips", text: $query)
         .textFieldStyle(.plain)
+        .font(.system(size: 15))
         .focused($searchFocused)
         .accessibilityLabel("Search clips")
       if model.isLoading {
@@ -328,6 +330,7 @@ struct LibraryView: View {
       List(model.items, id: \.id, selection: itemSelection) { clip in
         LibraryRow(model: model, clip: clip)
           .tag(clip.id)
+          .listRowSeparator(.hidden)
           .contextMenu {
             clipMenu(clip)
           }
@@ -386,7 +389,7 @@ private struct LibraryRow: View {
       )
       VStack(alignment: .leading, spacing: 3) {
         Text(clip.kind == .image ? "Image" : String(clip.text.prefix(120)))
-          .font(.system(.body, design: clip.kind == .code ? .monospaced : .default))
+          .font(.system(size: 13.5, design: clip.kind == .code ? .monospaced : .default))
           .lineLimit(2)
         HStack(spacing: 4) {
           if let source = clip.source?.applicationName ?? clip.source?.bundleIdentifier {
@@ -396,22 +399,25 @@ private struct LibraryRow: View {
           }
           ClipAgeText(date: clip.lastSeenAt)
         }
-        .font(.caption)
+        .font(.system(size: 11.5))
         .foregroundStyle(.secondary)
       }
       Spacer(minLength: 4)
+      // Monochrome flags, as in Quick Paste: the glyph shapes already differ.
       if clip.isFavorite {
         Image(systemName: "star.fill")
-          .foregroundStyle(.yellow)
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
           .accessibilityLabel("Favorite")
       }
       if clip.isPinned {
         Image(systemName: "pin.fill")
+          .font(.system(size: 11))
           .foregroundStyle(.secondary)
           .accessibilityLabel("Pinned")
       }
     }
-    .padding(.vertical, 4)
+    .padding(.vertical, 3)
     .accessibilityElement(children: .combine)
     .onDrag { LibraryView.dragProvider(for: clip) }
   }
@@ -455,25 +461,27 @@ private struct LibraryCard: View {
         ClipAgeText(date: clip.lastSeenAt)
         Spacer()
         if clip.isFavorite {
-          Image(systemName: "star.fill").foregroundStyle(.yellow)
+          Image(systemName: "star.fill").font(.system(size: 10))
         }
         if clip.isPinned {
-          Image(systemName: "pin.fill").foregroundStyle(.secondary)
+          Image(systemName: "pin.fill").font(.system(size: 10))
         }
       }
-      .font(.caption)
+      .font(.system(size: 11.5))
       .foregroundStyle(.secondary)
     }
-    .padding(10)
+    .padding(12)
+    // A quiet tint with no border; only the selected card gets an outline, so
+    // the outline means "selected" and nothing else.
     .background(
-      isSelected ? Color.accentColor.opacity(0.15) : Color(nsColor: .controlBackgroundColor),
-      in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+      isSelected ? ClipStyle.selection : Color.primary.opacity(0.04),
+      in: RoundedRectangle(cornerRadius: ClipStyle.cardRadius, style: .continuous)
     )
     .overlay {
-      RoundedRectangle(cornerRadius: 10, style: .continuous)
-        .strokeBorder(
-          isSelected ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.5),
-          lineWidth: 1)
+      if isSelected {
+        RoundedRectangle(cornerRadius: ClipStyle.cardRadius, style: .continuous)
+          .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1)
+      }
     }
     .onDrag { LibraryView.dragProvider(for: clip) }
   }
@@ -538,14 +546,9 @@ private struct InspectorView: View {
 
   private func header(for clip: ClipSummary) -> some View {
     HStack(spacing: 12) {
-      KindBadge(
-        clip: clip,
-        loadThumbnail: { await model.loadThumbnail(for: clip) },
-        isSelected: false
-      )
       VStack(alignment: .leading, spacing: 2) {
         Text(clip.kind.displayName)
-          .font(.headline)
+          .font(.system(size: 17, weight: .semibold))
         HStack(spacing: 4) {
           if let source = clip.source?.applicationName ?? clip.source?.bundleIdentifier {
             Text(source)
@@ -553,16 +556,16 @@ private struct InspectorView: View {
           }
           ClipAgeText(date: clip.lastSeenAt, style: .spoken)
         }
-        .font(.subheadline)
+        .font(.system(size: 12.5))
         .foregroundStyle(.secondary)
       }
       Spacer()
       toggleButton(
-        on: "star.fill", off: "star", isOn: clip.isFavorite, tint: .yellow,
+        on: "star.fill", off: "star", isOn: clip.isFavorite, tint: .primary,
         label: clip.isFavorite ? "Remove from Favorites" : "Add to Favorites"
       ) { Task { await model.toggleFavorite(id: clip.id) } }
       toggleButton(
-        on: "pin.fill", off: "pin", isOn: clip.isPinned, tint: .accentColor,
+        on: "pin.fill", off: "pin", isOn: clip.isPinned, tint: .primary,
         label: clip.isPinned ? "Unpin" : "Pin"
       ) { Task { await model.togglePin(id: clip.id) } }
     }
@@ -602,16 +605,12 @@ private struct InspectorView: View {
 
   private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
     content()
-      .padding(12)
+      .padding(14)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(
-        Color(nsColor: .controlBackgroundColor),
-        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        Color.primary.opacity(0.04),
+        in: RoundedRectangle(cornerRadius: ClipStyle.cardRadius, style: .continuous)
       )
-      .overlay {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-          .strokeBorder(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 1)
-      }
   }
 
   private func textCard(_ text: String, monospaced: Bool) -> some View {
@@ -676,10 +675,10 @@ private struct InspectorView: View {
         .resizable()
         .scaledToFit()
         .frame(maxHeight: 380)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: ClipStyle.cardRadius, style: .continuous))
         .overlay {
-          RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 1)
+          RoundedRectangle(cornerRadius: ClipStyle.cardRadius, style: .continuous)
+            .strokeBorder(ClipStyle.hairline, lineWidth: 1)
         }
         .frame(maxWidth: .infinity)
         .accessibilityLabel("Image preview")
@@ -703,7 +702,7 @@ private struct InspectorView: View {
   // MARK: - Details
 
   private func details(for clip: ClipSummary) -> some View {
-    VStack(spacing: 8) {
+    VStack(spacing: 10) {
       metadataRow("Captured", clip.createdAt.formatted(date: .abbreviated, time: .shortened))
       if clip.copyCount > 1 {
         metadataRow("Copied", "\(clip.copyCount) times")
@@ -752,6 +751,8 @@ private struct InspectorView: View {
       } label: {
         Label("Delete", systemImage: "trash")
       }
+      .buttonStyle(.borderless)
+      .foregroundStyle(.red.opacity(0.85))
     }
   }
 
@@ -768,6 +769,7 @@ private struct InspectorView: View {
       } label: {
         Label("Transform", systemImage: "wand.and.stars")
       }
+      .menuStyle(.borderlessButton)
       .fixedSize()
       .accessibilityLabel("Transform clip text")
     }
@@ -884,7 +886,7 @@ private struct InspectorView: View {
       Text(value)
         .textSelection(.enabled)
     }
-    .font(.callout)
+    .font(.system(size: 12.5))
   }
 
   private func copyClip(_ clip: ClipSummary) async {
@@ -1044,15 +1046,17 @@ private struct TagEditor: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text("Tags")
-        .font(.callout)
+        .font(.system(size: 12.5))
         .foregroundStyle(.secondary)
       FlowChips(tags: tags) { tag in
         Task { await remove(tag) }
       }
       TextField("Add tag", text: $draft)
-        .textFieldStyle(.roundedBorder)
-        .font(.callout)
-        .controlSize(.small)
+        .textFieldStyle(.plain)
+        .font(.system(size: 12.5))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
         .frame(maxWidth: 240)
         .help("Press Return or type a comma to add a tag")
         .onSubmit(commitDraft)
@@ -1107,7 +1111,7 @@ private struct FlowChips: View {
         .font(.caption)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.accentColor.opacity(0.12), in: Capsule())
+        .background(Color.primary.opacity(0.07), in: Capsule())
       }
     }
   }

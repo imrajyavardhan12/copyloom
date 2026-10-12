@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -27,18 +28,10 @@ struct SettingsView: View {
 
       List {
         ForEach(model.ignoredBundleIdentifiers, id: \.self) { bundleID in
-          HStack {
-            Image(systemName: "app.badge")
-              .foregroundStyle(.secondary)
-            Text(bundleID)
-              .font(.system(.body, design: .monospaced))
-              .textSelection(.enabled)
-            Spacer()
-            Button("Remove") {
-              model.removeIgnoredBundleID(bundleID)
-            }
-            .buttonStyle(.link)
+          IgnoredAppRow(bundleID: bundleID) {
+            model.removeIgnoredBundleID(bundleID)
           }
+          .listRowSeparator(.hidden)
         }
         .onDelete { indexSet in
           for index in indexSet {
@@ -46,12 +39,12 @@ struct SettingsView: View {
           }
         }
       }
-      .listStyle(.bordered)
+      .listStyle(.inset)
+      .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
 
       HStack {
-        TextField("com.example.app", text: $newBundleID)
+        TextField("Bundle identifier, such as com.example.app", text: $newBundleID)
           .textFieldStyle(.roundedBorder)
-          .font(.system(.body, design: .monospaced))
           .onSubmit(addManual)
         Button("Add") {
           addManual()
@@ -205,6 +198,65 @@ struct SettingsView: View {
     .onAppear {
       model.refreshPermissionStatus()
     }
+  }
+}
+
+/// An ignored application: its real icon and name when it is installed, and
+/// the bundle identifier (what is actually stored) as the quiet second line.
+private struct IgnoredAppRow: View {
+  let bundleID: String
+  let remove: () -> Void
+
+  private var location: URL? {
+    NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+  }
+
+  private var name: String {
+    guard let location else { return bundleID }
+    return FileManager.default.displayName(atPath: location.path)
+      .replacingOccurrences(of: ".app", with: "")
+  }
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Group {
+        if let location {
+          Image(nsImage: NSWorkspace.shared.icon(forFile: location.path))
+            .resizable()
+        } else {
+          Image(systemName: "app.dashed")
+            .resizable()
+            .scaledToFit()
+            .padding(4)
+            .foregroundStyle(.tertiary)
+        }
+      }
+      .frame(width: 24, height: 24)
+      .accessibilityHidden(true)
+
+      VStack(alignment: .leading, spacing: 1) {
+        Text(name)
+          .font(.system(size: 13))
+        if name != bundleID {
+          Text(bundleID)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+        }
+      }
+      Spacer()
+      Button(action: remove) {
+        Image(systemName: "xmark")
+          .font(.system(size: 10, weight: .semibold))
+          .foregroundStyle(.secondary)
+          .frame(width: 22, height: 22)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.borderless)
+      .help("Stop ignoring \(name)")
+      .accessibilityLabel("Remove \(name)")
+    }
+    .padding(.vertical, 2)
   }
 }
 

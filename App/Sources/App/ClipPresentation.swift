@@ -42,6 +42,20 @@ struct ClipAgeText: View {
   }
 }
 
+/// One quiet visual language for both surfaces: selection is a neutral wash
+/// rather than an accent slab, the accent is kept for focus, and secondary
+/// information steps down through `.secondary` and `.tertiary` instead of
+/// extra colors or boxes.
+enum ClipStyle {
+  static let rowRadius: CGFloat = 8
+  static let cardRadius: CGFloat = 12
+
+  /// Selected row or card background. Neutral so it works over any material
+  /// in light and dark; contrast stays with the primary text color.
+  static let selection = Color.primary.opacity(0.08)
+  static let hairline = Color.primary.opacity(0.08)
+}
+
 /// Kind icon for list rows. Images resolve thumbnails; hex colors show their
 /// swatch (functional notations keep the palette icon; the Transform menu
 /// converts them to hex).
@@ -81,13 +95,12 @@ struct KindBadge: View {
     .accessibilityHidden(true)
   }
 
+  /// A bare monochrome glyph: the kind is information, not decoration, so it
+  /// gets no tinted tile and no accent color.
   private func badge(_ systemName: String) -> some View {
     Image(systemName: systemName)
-      .foregroundStyle(isSelected ? Color.white : Color.accentColor)
+      .font(.system(size: 14, weight: .regular))
+      .foregroundStyle(isSelected ? Color.primary : Color.secondary)
       .frame(width: 28, height: 28)
-      .background(
-        (isSelected ? Color.white.opacity(0.18) : Color.accentColor.opacity(0.12)),
-        in: RoundedRectangle(cornerRadius: 7)
-      )
   }
 }

@@ -25,11 +25,8 @@ struct ClipThumbnail: View {
     case .badge:
       content
         .frame(width: 28, height: 28)
-        .background(
-          (isSelected ? Color.white.opacity(0.18) : Color.accentColor.opacity(0.12)),
-          in: RoundedRectangle(cornerRadius: 7)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .task { @MainActor in image = await load() }
     case .fill(let height):
       // The image sits in an overlay on a fixed-size base: a `scaledToFill`
@@ -52,8 +49,8 @@ struct ClipThumbnail: View {
           .scaledToFill()
       } else {
         Image(systemName: "photo")
-          .font(.system(size: 15, weight: .semibold))
-          .foregroundStyle(isSelected ? Color.white : Color.accentColor)
+          .font(.system(size: 13, weight: .regular))
+          .foregroundStyle(isSelected ? Color.primary : Color.secondary)
       }
     }
   }
