@@ -1,6 +1,6 @@
 # ADR 0007: Paste Queue (M4 slice 1)
 
-- **Status:** Proposed (three owner decisions open, see the end)
+- **Status:** Accepted (owner decisions recorded at the end)
 - **Date:** 2026-10-13
 
 ## Context
@@ -145,15 +145,13 @@ read. **Recommendation: do not restore.** Open question 2.
   the text.
 - A queue cannot resurrect deleted content (Decision 1).
 
-## Open questions for the owner
+## Owner decisions (2026-10-13)
 
-1. **Paste Next shortcut.** Proposed: **⌃⌥V** (two modifiers, next to the
-   existing ⌃⌘V). Alternatives: ⌃⌥⌘V (harder to clash, more modifiers to
-   release), or no default shortcut (menu only, user sets one later).
-2. **Restore the previous clipboard after the queue finishes?**
-   Recommended: no (Decision 5).
-3. **Collect mode in slice 1?** Recommended: no. It changes what a copy
-   *does* while active, so it needs a visible on/off indicator, and skipped
-   copies (sensitive, ignored app) make the queue count differ from the
-   number of copies, which the UI must explain. Better as slice 2 after the
-   basic queue is in use.
+1. **Paste Next shortcut: ⌃⌥V**, its own `GlobalHotKey` registration so a
+   clash leaves the menu item working.
+2. **The previous clipboard is not restored** after the queue finishes
+   (Decision 5).
+3. **Collect mode is slice 2**, not slice 1. It changes what a copy does
+   while active, so it needs a visible on/off indicator, and skipped copies
+   (sensitive, ignored app) make the queue count differ from the number of
+   copies, which the UI must explain.
