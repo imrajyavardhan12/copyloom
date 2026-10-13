@@ -78,7 +78,7 @@ Slice order and decisions: [ADR 0005](docs/decisions/0005-library.md).
 - [x] background Vision OCR with searchable output and privacy-safe quarantine policy (slice 4; owner live evidence pending, see [`docs/validation/m3-ocr.md`](docs/validation/m3-ocr.md))
 - [x] collections, tags and saved-query Smart Collections (slice 3)
 - [x] transform protocol/registry and initial JSON/text/URL/Base64/color actions (slice 5; file-path actions deferred, nothing in M3 produces a use case for them yet)
-- [ ] syntax-highlighted code preview (plain monospace preview shipped; highlighting needs its own dependency decision)
+- [x] code preview: plain monospace shipped; syntax highlighting deferred by decision, no dependency (see [ADR 0006](docs/decisions/0006-syntax-highlighting.md))
 - [x] import/export archive v1 with manifest and integrity verification (slice 6; design accepted in [`docs/archive-format.md`](docs/archive-format.md). 6a format core, 6b export and 6c import done; owner click-through evidence pending)
 
 **Not included:** semantic search, sync, Vault, MCP, text expansion.

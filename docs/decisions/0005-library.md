@@ -1,6 +1,6 @@
 # ADR 0005: Library (M3) architecture
 
-- **Status:** Accepted (slices 1–5 implemented; slice 6 pending)
+- **Status:** Accepted (slices 1–6 implemented; owner click-through evidence pending; highlighting declined in ADR 0006)
 - **Date:** 2026-09-08
 
 ## Context

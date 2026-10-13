@@ -377,7 +377,7 @@ Initial runtime dependency:
 
 - **GRDB (MIT):** materially reduces migration, binding and concurrency risk while preserving SQL/FTS control.
 
-No syntax highlighter, hotkey package, analytics SDK, networking layer or cryptography package is approved yet. Before addition, document purpose, alternatives, license, transitive graph, maintenance, binary impact, privacy/network behavior, and removal plan.
+No syntax highlighter ([ADR 0006](docs/decisions/0006-syntax-highlighting.md) declined one for M3), hotkey package, analytics SDK, networking layer or cryptography package is approved yet. Before addition, document purpose, alternatives, license, transitive graph, maintenance, binary impact, privacy/network behavior, and removal plan.
 
 ## Accepted project inputs and remaining stop points
 

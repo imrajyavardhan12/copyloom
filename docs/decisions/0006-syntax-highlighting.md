@@ -1,6 +1,6 @@
 # ADR 0006: Syntax highlighting for code previews
 
-- **Status:** Proposed (needs the owner's decision)
+- **Status:** Accepted (option E: no dependency in M3)
 - **Date:** 2026-10-13
 
 ## Context
@@ -26,8 +26,9 @@ What makes this clipboard-specific rather than an editor feature:
 ## Options
 
 Facts about each package below were **not re-verified in this session**
-(versions, last release, license text, grammar counts). Verify them against
-the upstream repository and record them in this file before accepting.
+(versions, last release, license text, grammar counts). The accepted option
+adds no dependency, so they do not affect this decision; verify them against
+the upstream repository before any later proposal to adopt B or C.
 
 | | A. Splash | B. Highlightr | C. Tree-sitter | D. In-house tokenizer | E. Do nothing |
 | --- | --- | --- | --- | --- | --- |
@@ -76,9 +77,8 @@ Elimination:
   a cancellation test, and an accessibility check that VoiceOver still reads
   the plain text unchanged (attributes must not alter the string).
 
-## Open question for the owner
+## Owner decision (2026-10-13)
 
-Is code highlighting important enough to spend a slice on before M4 (paste
-queue, snippets)? The recommendation is no: it is polish, while M4 is
-product capability. Accepting this ADR as written closes M3 apart from the
-owner's click-through evidence.
+Accepted as written: no highlighting dependency, and no highlighting slice
+before M4. M3 is closed apart from the owner's click-through evidence
+(`docs/validation/m3-ocr.md`, `docs/validation/m3-export-import.md`).
