@@ -13,7 +13,7 @@ The core history and copy-back experience must degrade gracefully. No permission
 | Write selected clip to clipboard | No Accessibility permission | User invokes Copy or Paste | None needed |
 | Registered global Quick Paste shortcut | No Input Monitoring expected when using `RegisterEventHotKey` | User assigns/enables shortcut | Menu-bar invocation |
 | Restore prior app focus | No Automation permission for `NSRunningApplication.activate` | On paste action | Copy only if target is gone or activation fails |
-| Synthesize Command-V | **Accessibility / Post Events** | Explain and request only when the user enables or first invokes automatic paste | Copy content and show “Press ⌘V” |
+| Synthesize Command-V (Quick Paste, and Paste Queue's ⌃⌥V Paste Next) | **Accessibility / Post Events** | Explain and request only when the user enables or first invokes automatic paste | Copy content and show “Press ⌘V” |
 | Broad keystroke monitoring for text expansion | **Input Monitoring**, and likely Accessibility/Post Events for replacement | Only when user explicitly enables text expansion | Snippets remain copy/paste actions without expansion |
 | Export / import a library archive | App Sandbox `com.apple.security.files.user-selected.read-write`: access only to the folder the user picks in the system open panel, for that action | When the user chooses **Export Library…** or **Import Library…** | No export/import; all other features unaffected. No network, no Full Disk Access |
 | Vision OCR on a captured image | None beyond access to the image | No prompt | Mark OCR unavailable/failed |
@@ -45,6 +45,8 @@ References: [NSPasteboard](https://developer.apple.com/documentation/appkit/nspa
 ### Accessibility / Post Events
 
 Automatic paste writes the selected representations, reactivates the retained target, and posts Command-V. Check `CGPreflightPostEventAccess()` (and where necessary `AXIsProcessTrusted`) before the action. Request access through `CGRequestPostEventAccess()` only after an explanation.
+
+Paste Next (Paste Queue, [ADR 0007](decisions/0007-paste-queue.md)) uses the same grant: it posts Command-V into the app that is already frontmost, without reactivating anything. Before posting it reads the modifier state with `CGEventSource.flagsState(.combinedSessionState)` to wait for the shortcut keys to be released; that reads the current modifier flags only and is not expected to need Input Monitoring (owner live check Q2 records whether any prompt appears).
 
 Accessibility is not required for clipboard capture, search, OCR, preview, copy-only, a registered hotkey, or ordinary app-local keyboard navigation. Denial must not make the app useless.
 

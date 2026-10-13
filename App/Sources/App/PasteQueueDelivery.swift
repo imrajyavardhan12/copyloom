@@ -5,16 +5,16 @@ import QuickPasteFeature
 
 /// Pastes one Paste Queue item into the app that is frontmost when ⌃⌥V is
 /// pressed (ADR 0007 §4). It never re-activates a remembered app: the user
-/// is already in the target field. Every refusal leaves the item on the
-/// clipboard so the user's own ⌘V still works.
+/// is already in the target field. Refusals write nothing and keep the item;
+/// without Accessibility the item is copied for the user's own ⌘V.
 @MainActor
 final class PasteQueueDelivery: PasteQueueDelivering {
   private let copier: PasteboardClipCopier
   private let imageLoader: @MainActor (UUID) async -> (data: Data, uti: String)?
 
   /// How long the shortcut's modifier keys may stay down before Copyloom
-  /// gives up on posting ⌘V and leaves the item copied instead.
-  private static let modifierReleaseTimeout: Duration = .milliseconds(500)
+  /// gives up on this press (nothing is written; the item stays next).
+  private static let modifierReleaseTimeout: Duration = .seconds(2)
   private static let heldModifiers: CGEventFlags = [
     .maskControl, .maskAlternate, .maskCommand, .maskShift,
   ]
@@ -28,6 +28,18 @@ final class PasteQueueDelivery: PasteQueueDelivering {
   }
 
   func deliverQueued(_ clip: ClipSummary) async throws -> PasteQueueDeliveryResult {
+    // Copyloom's own window is not a paste target, and advancing here would
+    // silently lose the item.
+    guard
+      NSWorkspace.shared.frontmostApplication?.bundleIdentifier != Bundle.main.bundleIdentifier
+    else {
+      return .refused(.copyloomFrontmost)
+    }
+    // Wait for ⌃⌥ to come up before writing anything. A ⌘V posted while they
+    // are down can reach the app combined with them, and a held shortcut
+    // auto-repeats: each repeat would otherwise deliver another item.
+    guard await waitForModifierRelease() else { return .refused(.keysHeld) }
+
     if clip.kind == .image {
       guard let image = await imageLoader(clip.id) else { return .unavailable }
       try copier.copyImage(
@@ -36,16 +48,7 @@ final class PasteQueueDelivery: PasteQueueDelivering {
       try copier.copy(clip)
     }
 
-    guard CGPreflightPostEventAccess() else { return .copied(.noAccessibility) }
-    guard
-      NSWorkspace.shared.frontmostApplication?.bundleIdentifier != Bundle.main.bundleIdentifier
-    else {
-      return .copied(.copyloomFrontmost)
-    }
-    // The user is still holding ⌃⌥ from the shortcut. A ⌘V posted now can
-    // reach the app combined with them, so wait for the keys to come up.
-    guard await waitForModifierRelease() else { return .copied(.modifiersHeld) }
-
+    guard CGPreflightPostEventAccess() else { return .copied }
     try PasteKeystroke.postCommandV()
     return .pasted
   }

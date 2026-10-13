@@ -90,14 +90,21 @@ into the app that is frontmost *at that moment* and advances the cursor.
   frontmost app is not Copyloom, event creation succeeded.
 - **Modifiers still held:** the user is still holding the shortcut's
   modifiers when the handler runs; posting ⌘V then can reach the app as
-  ⌃⌥⌘V. Before posting, poll `CGEventSource.flagsState(.combinedSessionState)`
-  until the shortcut's modifiers are up (bounded, about 500 ms); if they never
-  release, leave the item on the clipboard and say "Copied; press ⌘V to
-  paste". This is the main risk to verify live.
+  ⌃⌥⌘V. Before writing anything, poll
+  `CGEventSource.flagsState(.combinedSessionState)` until the modifiers are
+  up (bounded at 2 s). If they stay down, the press is **refused**: nothing
+  is written and the queue does not advance. As built, this also covers key
+  auto-repeat: a held shortcut cannot use up several items, because presses
+  during a running paste are ignored and a timed-out press delivers nothing.
+  This is the main risk to verify live.
+- **Copyloom frontmost** (for example the Library window): refused the same
+  way, with "Switch to the app you want to paste into". Copying and
+  advancing there would just lose the item.
 - **Without Accessibility:** Paste Next copies the item and advances the
-  cursor, and the status says "Copied next queue item; press ⌘V". The user's
-  own ⌘V then pastes it. The cursor advances on copy so the next press gets
-  the next item.
+  cursor, and the status says to press ⌘V. The user's own ⌘V then pastes it.
+  The cursor advances on copy so the next press gets the next item.
+- **From the menu:** Paste Next waits 200 ms for the status menu to close
+  and focus to settle before delivering, as Quick Paste does before ⌘V.
 - **No "paste all".** The target app reads the pasteboard asynchronously
   after receiving ⌘V; writing the next item right after posting ⌘V races
   that read and can paste the wrong item. One press per item is the only

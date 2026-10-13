@@ -29,7 +29,7 @@ struct CopyloomApp: App {
 
       if let queue = model.pasteQueue {
         Button(queue.count == 0 ? "Paste Queue Is Empty" : "Paste Next (\(queue.count) Queued)") {
-          model.pasteNextFromQueue()
+          model.pasteNextFromQueue(fromMenu: true)
         }
         .keyboardShortcut("v", modifiers: [.control, .option])
         .disabled(queue.count == 0)

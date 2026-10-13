@@ -59,7 +59,7 @@ struct PasteQueueModelTests {
   func copyOnlyAdvances() async {
     let first = fixture("first")
     let second = fixture("second")
-    let delivery = QueueDeliverySpy(result: .copied(.noAccessibility))
+    let delivery = QueueDeliverySpy(result: .copied)
     let model = PasteQueueModel(
       repository: QuickPasteRepositorySpy(clips: [first, second]), delivery: delivery)
     model.add(first.id)
@@ -67,7 +67,7 @@ struct PasteQueueModelTests {
 
     #expect(
       await model.pasteNext()
-        == .delivered(.copied(.noAccessibility), kind: .text, remaining: 1, skipped: 0))
+        == .delivered(.copied, kind: .text, remaining: 1, skipped: 0))
     #expect(model.queue.next == second.id)
   }
 
@@ -113,6 +113,22 @@ struct PasteQueueModelTests {
 
     #expect(await model.pasteNext() == .delivered(.pasted, kind: .text, remaining: 0, skipped: 1))
     #expect(delivery.delivered.map(\.id) == [next.id])
+  }
+
+  @Test(
+    "a refused delivery (keys held, Copyloom frontmost) keeps the item and records no use",
+    arguments: [PasteQueueRefusal.keysHeld, .copyloomFrontmost])
+  func refusalKeepsItem(reason: PasteQueueRefusal) async {
+    let clip = fixture("not yet")
+    let repository = QuickPasteRepositorySpy(clips: [clip])
+    let model = PasteQueueModel(
+      repository: repository, delivery: QueueDeliverySpy(result: .refused(reason)))
+    model.add(clip.id)
+
+    #expect(await model.pasteNext() == .refused(reason, remaining: 1, skipped: 0))
+    #expect(await model.pasteNext() == .refused(reason, remaining: 1, skipped: 0))
+    #expect(model.queue.next == clip.id)
+    #expect(await repository.recordedUses().isEmpty)
   }
 
   @Test("a failed delivery keeps the item at the head for a retry")

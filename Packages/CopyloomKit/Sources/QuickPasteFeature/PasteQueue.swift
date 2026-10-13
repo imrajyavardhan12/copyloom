@@ -33,17 +33,23 @@ public struct PasteQueue: Equatable, Sendable {
 public enum PasteQueueDeliveryResult: Equatable, Sendable {
   /// Written to the pasteboard and ⌘V was posted to the frontmost app.
   case pasted
-  /// Written to the pasteboard only; the user pastes with their own ⌘V.
-  case copied(PasteQueueCopyReason)
+  /// Written to the pasteboard only (no Accessibility permission); the
+  /// user's own ⌘V pastes it, so the queue still advances.
+  case copied
   /// The clip exists but cannot be delivered and never will be (its image
   /// file is gone). Skipped like a deleted clip, so it cannot block the queue.
   case unavailable
+  /// Nothing was written; the item stays next in the queue.
+  case refused(PasteQueueRefusal)
 }
 
-public enum PasteQueueCopyReason: Equatable, Sendable {
-  case noAccessibility
+public enum PasteQueueRefusal: Equatable, Sendable {
+  /// The shortcut's keys were still held after the release timeout. Without
+  /// this, a held (auto-repeating) shortcut would use up several items.
+  case keysHeld
+  /// Copyloom itself is frontmost: there is no target app, and advancing
+  /// would lose the item.
   case copyloomFrontmost
-  case modifiersHeld
 }
 
 /// Delivers one queued clip into whatever app is frontmost now. Unlike Quick
@@ -60,6 +66,8 @@ public enum PasteNextOutcome: Equatable, Sendable {
   case delivered(PasteQueueDeliveryResult, kind: ClipKind, remaining: Int, skipped: Int)
   /// Every remaining item had been deleted or expired.
   case exhausted(skipped: Int)
+  /// Delivery declined before writing anything; the item stays next.
+  case refused(PasteQueueRefusal, remaining: Int, skipped: Int)
   /// Delivery failed; the item stays at the head so the next press retries.
   case failed(remaining: Int, skipped: Int)
 }
@@ -138,6 +146,9 @@ public final class PasteQueueModel {
         queue.advance()
         skipped += 1
         continue
+      }
+      if case .refused(let reason) = result {
+        return .refused(reason, remaining: queue.count, skipped: skipped)
       }
       // A copy counts as delivered: without Accessibility the user's own ⌘V
       // pastes it, so the next press must offer the next item.

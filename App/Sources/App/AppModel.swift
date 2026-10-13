@@ -404,10 +404,14 @@ final class AppModel {
     libraryWindowController?.toggle()
   }
 
-  /// Pastes the next Paste Queue item into the frontmost app (⌃⌥V).
-  func pasteNextFromQueue() {
+  /// Pastes the next Paste Queue item into the frontmost app (⌃⌥V or the
+  /// menu). From the menu, the status menu is still closing when the click
+  /// lands, so give focus a moment to settle back first (Quick Paste needs
+  /// the same before posting ⌘V).
+  func pasteNextFromQueue(fromMenu: Bool = false) {
     guard let pasteQueue else { return }
     Task { @MainActor [weak self] in
+      if fromMenu { try? await Task.sleep(for: .milliseconds(200)) }
       let outcome = await pasteQueue.pasteNext()
       guard let self, let message = Self.statusText(for: outcome) else { return }
       lastEventText = message
@@ -433,6 +437,12 @@ final class AppModel {
       return "Paste Queue is empty. Add clips with ⇧↵ in Quick Paste."
     case .exhausted(let skipped):
       return "Paste Queue finished.\(skippedNote(skipped))"
+    case .refused(.copyloomFrontmost, _, let skipped):
+      return
+        "Switch to the app you want to paste into, then press ⌃⌥V. The queue did not advance.\(skippedNote(skipped))"
+    case .refused(.keysHeld, _, let skipped):
+      return
+        "Release ⌃⌥ to paste; nothing was pasted and the queue did not advance.\(skippedNote(skipped))"
     case .failed(let remaining, let skipped):
       return
         "Could not paste the queued clip; it stays next (\(clips(remaining)) queued).\(skippedNote(skipped))"
@@ -441,15 +451,10 @@ final class AppModel {
       switch result {
       case .pasted:
         return "Pasted queued \(kind.label).\(left)\(skippedNote(skipped))"
-      case .copied(let reason):
-        let why: String
-        switch reason {
-        case .noAccessibility: why = " Enable Automatic Paste to paste directly."
-        case .modifiersHeld: why = " The shortcut keys were still held."
-        case .copyloomFrontmost: why = ""
-        }
-        return "Copied queued \(kind.label); press ⌘V to paste.\(why)\(left)\(skippedNote(skipped))"
-      case .unavailable:
+      case .copied:
+        return
+          "Copied queued \(kind.label); press ⌘V to paste. Enable Automatic Paste to paste directly.\(left)\(skippedNote(skipped))"
+      case .unavailable, .refused:
         return nil
       }
     }

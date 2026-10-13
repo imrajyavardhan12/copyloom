@@ -327,7 +327,7 @@
 
   private final class PreviewQueueDelivery: PasteQueueDelivering {
     func deliverQueued(_ clip: ClipSummary) async throws -> PasteQueueDeliveryResult {
-      .copied(.copyloomFrontmost)
+      .refused(.copyloomFrontmost)
     }
   }
 
