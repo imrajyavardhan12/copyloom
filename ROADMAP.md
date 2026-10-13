@@ -85,7 +85,7 @@ Slice order and decisions: [ADR 0005](docs/decisions/0005-library.md).
 
 ## M4 — Multi-clip and reusable workflows
 
-- transient Paste Queue with explicit lifecycle
+- transient Paste Queue with explicit lifecycle (slice 1 built: ⇧↵ / Library add, ⌃⌥V Paste Next, [ADR 0007](docs/decisions/0007-paste-queue.md); owner live check pending, see [`docs/validation/m4-paste-queue.md`](docs/validation/m4-paste-queue.md); collect mode is slice 2)
 - reusable heterogeneous bundles referencing clip IDs
 - snippets
 - optional global text expansion after a separate Input Monitoring/Accessibility design review

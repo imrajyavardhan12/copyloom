@@ -133,8 +133,16 @@ struct QuickPasteView: View {
     HStack(spacing: 16) {
       Text("↵ Paste")
       Text("⌘↵ Copy only")
+      if let queued = model.pasteQueue?.count, queued > 0 {
+        Text("\(queued) queued · ⌃⌥V pastes next")
+          .monospacedDigit()
+          .accessibilityLabel(
+            "\(queued) \(queued == 1 ? "clip" : "clips") in the Paste Queue. Control-Option-V pastes the next one."
+          )
+      }
       Spacer()
       Group {
+        Text("⇧↵ Queue")
         Text("⌘P Pin")
         Text("⌘F Favorite")
         Text("⌥⌫ Delete")

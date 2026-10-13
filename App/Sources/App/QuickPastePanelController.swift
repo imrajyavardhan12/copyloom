@@ -13,6 +13,7 @@ final class QuickPastePanelController {
 
   init(
     repository: any ClipRepository,
+    pasteQueue: PasteQueueModel? = nil,
     onDeliveryStatus: @escaping PasteCoordinator.StatusHandler
   ) {
     let panel = QuickPastePanel(
@@ -38,6 +39,7 @@ final class QuickPastePanelController {
     model = QuickPasteModel(
       repository: repository,
       delivery: pasteCoordinator,
+      pasteQueue: pasteQueue,
       onDismiss: { [weak panel] in panel?.orderOut(nil) }
     )
 
@@ -104,6 +106,12 @@ final class QuickPastePanelController {
     panel.setFrameOrigin(origin)
   }
 
+  /// Shift without Command/Option/Control. Keypad Enter also carries
+  /// `.numericPad`, so an exact `== .shift` match would miss it.
+  private func isShiftOnly(_ modifiers: NSEvent.ModifierFlags) -> Bool {
+    modifiers.contains(.shift) && modifiers.isDisjoint(with: [.command, .option, .control])
+  }
+
   private func handleKeyEvent(_ event: NSEvent) -> Bool {
     let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
@@ -123,6 +131,10 @@ final class QuickPastePanelController {
       return true
     case kVK_DownArrow:
       model.moveSelection(by: 1)
+      return true
+    case kVK_Return where isShiftOnly(modifiers), kVK_ANSI_KeypadEnter where isShiftOnly(modifiers):
+      // ⇧↵ queues the selection and keeps the panel open (ADR 0007 §3).
+      model.addSelectedToQueue()
       return true
     case kVK_Return, kVK_ANSI_KeypadEnter:
       let mode: ClipDeliveryMode

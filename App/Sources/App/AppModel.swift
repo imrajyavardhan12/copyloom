@@ -7,6 +7,7 @@ import ClipboardCapture
 import Foundation
 import LibraryFeature
 import Observation
+import QuickPasteFeature
 
 @MainActor
 @Observable
@@ -30,8 +31,11 @@ final class AppModel {
   @ObservationIgnored private var libraryWindowController: LibraryWindowController?
   @ObservationIgnored private var globalHotKey: GlobalHotKey?
   @ObservationIgnored private var libraryHotKey: GlobalHotKey?
+  @ObservationIgnored private var pasteNextHotKey: GlobalHotKey?
   @ObservationIgnored private var ocrTask: Task<Void, Never>?
   private(set) var libraryModel: LibraryModel?
+  /// Session-only Paste Queue (ADR 0007); nil when storage is unavailable.
+  private(set) var pasteQueue: PasteQueueModel?
 
   init(defaults: UserDefaults = .standard) {
     let store = CaptureSettingsStore(defaults: defaults)
@@ -73,8 +77,22 @@ final class AppModel {
       monitor = PasteboardPollingMonitor(service: service) { [weak self] outcome in
         self?.handle(outcome)
       }
+      let repository = database.repository
+      let pasteQueue = PasteQueueModel(
+        repository: repository,
+        delivery: PasteQueueDelivery(imageLoader: { id in
+          guard let meta = try? await repository.attachment(for: id),
+            let data = try? await repository.attachmentData(for: id)
+          else {
+            return nil
+          }
+          return (data, meta.uti)
+        })
+      )
+      self.pasteQueue = pasteQueue
       let quickPasteController = QuickPastePanelController(
         repository: database.repository,
+        pasteQueue: pasteQueue,
         onDeliveryStatus: { [weak self] status in
           self?.lastEventText = status
         }
@@ -125,7 +143,8 @@ final class AppModel {
         libraryImporter: importActions.apply
       )
       self.libraryModel = libraryModel
-      self.libraryWindowController = LibraryWindowController(model: libraryModel)
+      self.libraryWindowController = LibraryWindowController(
+        model: libraryModel, pasteQueue: pasteQueue)
       // M3 slice 4: serial background OCR over stored images. Idle
       // priority, cancellable, crash-resumable via image_ocr_jobs; the
       // 5 s poll also picks up captures made after launch within seconds.
@@ -158,6 +177,21 @@ final class AppModel {
         lastEventText =
           (lastEventText.map { $0 + " " } ?? "")
           + "The ⌃⌘L Library shortcut is unavailable; use the Copyloom menu."
+      }
+      do {
+        // Own registration, like ⌃⌘L: a clash leaves Paste Next in the menu.
+        pasteNextHotKey = try GlobalHotKey(registrations: [
+          GlobalHotKey.Registration(
+            keyCode: UInt32(kVK_ANSI_V),
+            modifiers: UInt32(controlKey | optionKey),
+            identifier: GlobalHotKey.pasteNextIdentifier,
+            action: { [weak self] in self?.pasteNextFromQueue() }
+          )
+        ])
+      } catch {
+        lastEventText =
+          (lastEventText.map { $0 + " " } ?? "")
+          + "The ⌃⌥V Paste Next shortcut is unavailable; use the Copyloom menu."
       }
       #if DEBUG
         let isPreview = PreviewMode.isEnabled
@@ -370,6 +404,57 @@ final class AppModel {
     libraryWindowController?.toggle()
   }
 
+  /// Pastes the next Paste Queue item into the frontmost app (⌃⌥V).
+  func pasteNextFromQueue() {
+    guard let pasteQueue else { return }
+    Task { @MainActor [weak self] in
+      let outcome = await pasteQueue.pasteNext()
+      guard let self, let message = Self.statusText(for: outcome) else { return }
+      lastEventText = message
+      if case .delivered = outcome { refreshClipCount() }
+    }
+  }
+
+  func clearPasteQueue() {
+    pasteQueue?.clear()
+    lastEventText = "Paste Queue cleared."
+  }
+
+  /// Status lines name the kind and counts, never clip content.
+  static func statusText(for outcome: PasteNextOutcome) -> String? {
+    func clips(_ count: Int) -> String { count == 1 ? "1 clip" : "\(count) clips" }
+    func skippedNote(_ skipped: Int) -> String {
+      skipped == 0 ? "" : " Skipped \(clips(skipped)) deleted since queueing."
+    }
+    switch outcome {
+    case .busy:
+      return nil
+    case .empty:
+      return "Paste Queue is empty. Add clips with ⇧↵ in Quick Paste."
+    case .exhausted(let skipped):
+      return "Paste Queue finished.\(skippedNote(skipped))"
+    case .failed(let remaining, let skipped):
+      return
+        "Could not paste the queued clip; it stays next (\(clips(remaining)) queued).\(skippedNote(skipped))"
+    case .delivered(let result, let kind, let remaining, let skipped):
+      let left = remaining == 0 ? " Paste Queue finished." : " \(remaining) left in the queue."
+      switch result {
+      case .pasted:
+        return "Pasted queued \(kind.label).\(left)\(skippedNote(skipped))"
+      case .copied(let reason):
+        let why: String
+        switch reason {
+        case .noAccessibility: why = " Enable Automatic Paste to paste directly."
+        case .modifiersHeld: why = " The shortcut keys were still held."
+        case .copyloomFrontmost: why = ""
+        }
+        return "Copied queued \(kind.label); press ⌘V to paste.\(why)\(left)\(skippedNote(skipped))"
+      case .unavailable:
+        return nil
+      }
+    }
+  }
+
   func requestAutomaticPastePermission() {
     // Let the status-menu click finish before presenting a modal alert. Without
     // this handoff, the originating click can activate the alert's default
@@ -399,6 +484,8 @@ final class AppModel {
     libraryWindowController?.hide()
     globalHotKey = nil
     libraryHotKey = nil
+    pasteNextHotKey = nil
+    pasteQueue?.clear()
     try? database?.close()
   }
 

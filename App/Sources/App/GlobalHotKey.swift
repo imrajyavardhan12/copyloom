@@ -20,6 +20,7 @@ final class GlobalHotKey {
 
   static let quickPasteIdentifier: UInt32 = 1
   static let libraryIdentifier: UInt32 = 2
+  static let pasteNextIdentifier: UInt32 = 3
 
   private static let signature: OSType = 0x4350_4C4D  // CPLM
 

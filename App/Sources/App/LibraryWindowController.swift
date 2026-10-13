@@ -1,5 +1,6 @@
 import AppKit
 import LibraryFeature
+import QuickPasteFeature
 import SwiftUI
 
 /// AppKit-managed Library window hosting the SwiftUI Library view.
@@ -18,10 +19,12 @@ import SwiftUI
 @MainActor
 final class LibraryWindowController {
   private let model: LibraryModel
+  private let pasteQueue: PasteQueueModel?
   private var window: NSWindow?
 
-  init(model: LibraryModel) {
+  init(model: LibraryModel, pasteQueue: PasteQueueModel? = nil) {
     self.model = model
+    self.pasteQueue = pasteQueue
   }
 
   var isVisible: Bool { window?.isVisible ?? false }
@@ -50,7 +53,8 @@ final class LibraryWindowController {
       defer: false
     )
     window.title = "Copyloom Library"
-    window.contentView = NSHostingView(rootView: LibraryView(model: model))
+    window.contentView = NSHostingView(
+      rootView: LibraryView(model: model).environment(pasteQueue))
     window.minSize = NSSize(width: 880, height: 520)
     window.center()
     window.setFrameAutosaveName("CopyloomLibrary")

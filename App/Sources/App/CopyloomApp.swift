@@ -27,6 +27,20 @@ struct CopyloomApp: App {
         model.openLibrary()
       }
 
+      if let queue = model.pasteQueue {
+        Button(queue.count == 0 ? "Paste Queue Is Empty" : "Paste Next (\(queue.count) Queued)") {
+          model.pasteNextFromQueue()
+        }
+        .keyboardShortcut("v", modifiers: [.control, .option])
+        .disabled(queue.count == 0)
+
+        if queue.count > 0 {
+          Button("Clear Paste Queue") {
+            model.clearPasteQueue()
+          }
+        }
+      }
+
       if model.automaticPasteEnabled {
         Label("Automatic Paste Enabled", systemImage: "checkmark.circle")
       } else {

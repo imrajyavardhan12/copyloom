@@ -71,10 +71,12 @@ missing or tombstoned clips. No migration.
   `⌘⌫`/`⌥⌫`).
 - **Library:** an "Add to Paste Queue" action in the inspector and the row
   context menu.
-- **Menu bar:** a Paste Queue submenu shows the count and the next item's
-  one-line preview (for text clips), with **Paste Next**, **Clear Queue**.
+- **Menu bar:** **Paste Next (N Queued)** (disabled as "Paste Queue Is
+  Empty") and **Clear Paste Queue**. As built, the menu shows the count only,
+  not a preview of the next item: a preview would need a database read every
+  time the menu opens, for little gain.
 - **Collect mode** (every new copy is appended automatically) is **out of
-  slice 1**; see open question 3.
+  slice 1**; see owner decision 3.
 
 ### 4. Pasting: one press, one paste
 
@@ -119,9 +121,13 @@ read. **Recommendation: do not restore.** Open question 2.
 - A pure `PasteQueue` value type (IDs, cursor, add, advance, clear, skip
   missing) in `QuickPasteFeature`, unit-tested without AppKit.
 - `clip(id:)` in `ClipStore`, tested for live, tombstoned and missing IDs.
-- App: the third `GlobalHotKey` registration (own instance, like ⌃⌘L), the
-  queue delivery method on `PasteCoordinator`, the panel `⇧↵` binding, the
-  Library action and the menu submenu.
+- App: the third `GlobalHotKey` registration (own instance, like ⌃⌘L), a
+  separate `PasteQueueDelivery` (it shares only the Command-V poster with
+  `PasteCoordinator`, whose re-activation flow does not apply), the panel
+  `⇧↵` binding, the Library actions and the menu items.
+- As built, a queued image whose file is gone is reported by delivery as
+  `unavailable` and skipped like a deleted clip, so it cannot block the
+  queue; other delivery errors keep the item for a retry.
 - Swift 6.1.2 hosted toolchain: no `~Copyable` types (see the ClipLineSource
   crash fixed in `40d0a6b`).
 

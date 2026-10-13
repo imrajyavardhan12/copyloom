@@ -203,7 +203,8 @@
         libraryModel.select(id: first.id)
       }
       await render(
-        LibraryView(model: libraryModel), size: CGSize(width: 1100, height: 700),
+        LibraryView(model: libraryModel).environment(model.pasteQueue),
+        size: CGSize(width: 1100, height: 700),
         name: "library-list-\(scheme)", appearance: appearance, in: directory)
 
       // Library, cards density.
@@ -252,6 +253,20 @@
       await render(
         QuickPasteView(model: quickPaste), size: CGSize(width: 680, height: 460),
         name: "quickpaste-\(scheme)", appearance: appearance, paintsBackground: false,
+        in: directory)
+
+      // Quick Paste with two clips in the Paste Queue (render-only queue: its
+      // delivery never touches the real pasteboard).
+      let previewQueue = PasteQueueModel(repository: repository, delivery: PreviewQueueDelivery())
+      let queuedPaste = QuickPasteModel(
+        repository: repository, delivery: PreviewDelivery(), pasteQueue: previewQueue)
+      await queuedPaste.loadRecent()
+      queuedPaste.addSelectedToQueue()
+      queuedPaste.moveSelection(by: 1)
+      queuedPaste.addSelectedToQueue()
+      await render(
+        QuickPasteView(model: queuedPaste), size: CGSize(width: 680, height: 460),
+        name: "quickpaste-queue-\(scheme)", appearance: appearance, paintsBackground: false,
         in: directory)
 
       // Settings.
@@ -308,6 +323,12 @@
   @MainActor
   private final class PreviewDelivery: ClipDelivering {
     func deliver(_ clip: ClipSummary, mode: ClipDeliveryMode) async throws {}
+  }
+
+  private final class PreviewQueueDelivery: PasteQueueDelivering {
+    func deliverQueued(_ clip: ClipSummary) async throws -> PasteQueueDeliveryResult {
+      .copied(.copyloomFrontmost)
+    }
   }
 
   /// Synthetic, obviously fake library content. Nothing here is real data.

@@ -25,6 +25,8 @@ public final class QuickPasteModel {
   public private(set) var isLoading = false
   public private(set) var isDelivering = false
   public private(set) var errorMessage: String?
+  /// The session Paste Queue, when the app wires one (⇧↵ adds to it).
+  public let pasteQueue: PasteQueueModel?
 
   @ObservationIgnored private let repository: any ClipRepository
   @ObservationIgnored private let delivery: any ClipDelivering
@@ -41,8 +43,10 @@ public final class QuickPasteModel {
     parser: SearchQueryParser = SearchQueryParser(),
     now: @escaping @MainActor @Sendable () -> Date = { .now },
     calendar: Calendar = .current,
+    pasteQueue: PasteQueueModel? = nil,
     onDismiss: @escaping @MainActor () -> Void = {}
   ) {
+    self.pasteQueue = pasteQueue
     self.repository = repository
     self.delivery = delivery
     self.parser = parser
@@ -122,6 +126,13 @@ public final class QuickPasteModel {
       errorMessage = "Copied, but usage metadata could not be updated"
     }
     onDismiss()
+  }
+
+  /// Queues the selected clip and keeps the panel open, so several clips
+  /// can be added in one visit.
+  public func addSelectedToQueue() {
+    guard let selectedClip, let pasteQueue else { return }
+    pasteQueue.add(selectedClip.id)
   }
 
   public func togglePinSelected() async {

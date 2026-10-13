@@ -95,7 +95,7 @@ final class PasteCoordinator: ClipDelivering {
       return
     }
 
-    try postPasteKeystroke()
+    try PasteKeystroke.postCommandV()
     onStatus(mode == .plainText ? "Pasted as plain text." : "Pasted into the original application.")
   }
 
@@ -140,8 +140,12 @@ final class PasteCoordinator: ClipDelivering {
     }
     return false
   }
+}
 
-  private func postPasteKeystroke() throws {
+/// Posts one synthetic Command-V. Shared by Quick Paste and the Paste Queue;
+/// callers check Accessibility (`CGPreflightPostEventAccess`) first.
+enum PasteKeystroke {
+  static func postCommandV() throws {
     guard let source = CGEventSource(stateID: .combinedSessionState),
       let keyDown = CGEvent(
         keyboardEventSource: source,

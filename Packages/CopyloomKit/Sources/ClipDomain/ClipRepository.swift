@@ -68,6 +68,11 @@ public protocol ClipRepository: Sendable {
 
   func recent(limit: Int) async throws -> [ClipSummary]
 
+  /// One live clip by ID, or nil when it is missing or tombstoned (deleted
+  /// or expired). Anything holding clip IDs across time (the Paste Queue)
+  /// re-reads through this so it can never deliver deleted content.
+  func clip(id: UUID) async throws -> ClipSummary?
+
   func search(_ query: SearchQuery, limit: Int) async throws -> [ClipSummary]
 
   // MARK: - Searchable OCR (M3 slice 4)
@@ -112,4 +117,10 @@ extension ClipRepository {
   @discardableResult
   public func recordOCRAttempt(clipID: UUID, at date: Date) async throws -> Int { 0 }
   public func rebuildSearchIndex() async throws {}
+}
+
+// Fail closed for fakes that do not model lookup: an unknown clip is never
+// delivered. The GRDB repository implements real lookup.
+extension ClipRepository {
+  public func clip(id: UUID) async throws -> ClipSummary? { nil }
 }

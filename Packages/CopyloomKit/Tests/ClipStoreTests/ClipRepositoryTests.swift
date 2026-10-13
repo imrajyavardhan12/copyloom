@@ -141,6 +141,45 @@ struct ClipRepositoryTests {
     #expect(try await database.health().fts5IntegrityCheckPassed)
   }
 
+  @Test("looks up a live clip by ID and returns nil once it is deleted, expired or unknown")
+  func looksUpClipByID() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let oldDate = Date(timeIntervalSince1970: 1_700_000_000)
+    let liveID = UUID()
+    let deletedID = UUID()
+    let expiredID = UUID()
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: liveID, text: "queued live clip", capturedAt: .now)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: deletedID, text: "queued then deleted", capturedAt: .now)
+    )
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: expiredID, text: "queued then expired", capturedAt: oldDate)
+    )
+    try await database.repository.setPinned(id: liveID, isPinned: true)
+
+    let live = try await database.repository.clip(id: liveID)
+    #expect(live?.id == liveID)
+    #expect(live?.text == "queued live clip")
+    #expect(live?.isPinned == true)
+
+    try await database.repository.delete(id: deletedID, at: .now)
+    #expect(
+      try await database.repository.deleteExpired(before: oldDate.addingTimeInterval(60)) == 1)
+
+    #expect(try await database.repository.clip(id: deletedID) == nil)
+    #expect(try await database.repository.clip(id: expiredID) == nil)
+    #expect(try await database.repository.clip(id: UUID()) == nil)
+    #expect(try await database.repository.clip(id: liveID)?.id == liveID)
+  }
+
   @Test("treats FTS operators and quotes as text rather than executable query syntax")
   func escapesFTSSyntax() async throws {
     let directory = FileManager.default.temporaryDirectory

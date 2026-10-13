@@ -489,6 +489,19 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     try await fetch(query: SearchQuery(text: [], filters: []), limit: limit)
   }
 
+  func clip(id: UUID) async throws -> ClipSummary? {
+    try await pool.read { database in
+      guard
+        let rowID = try Int64.fetchOne(
+          database,
+          sql: "SELECT id FROM clips WHERE uuid = ? AND deleted_at IS NULL",
+          arguments: [id.uuidString.lowercased()]
+        )
+      else { return nil }
+      return try Self.fetchSummary(clipRowID: rowID, database: database)
+    }
+  }
+
   // MARK: - Collections
 
   func createCollection(name: String, at date: Date) async throws -> ClipCollection {

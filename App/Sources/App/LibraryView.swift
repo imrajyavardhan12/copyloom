@@ -1,12 +1,14 @@
 import AppKit
 import ClipDomain
 import LibraryFeature
+import QuickPasteFeature
 import SwiftUI
 import UniformTypeIdentifiers
 import os
 
 struct LibraryView: View {
   @Bindable var model: LibraryModel
+  @Environment(PasteQueueModel.self) private var pasteQueue: PasteQueueModel?
   @State private var query = ""
   @State private var searchTask: Task<Void, Never>?
   @State private var sheet: LibrarySheet?
@@ -228,6 +230,9 @@ struct LibraryView: View {
   @ViewBuilder
   private func clipMenu(_ clip: ClipSummary) -> some View {
     Button("Copy") { Task { await copyClip(clip) } }
+    if let pasteQueue {
+      Button("Add to Paste Queue") { pasteQueue.add(clip.id) }
+    }
     Menu("Add to Collection") {
       if model.collections.isEmpty {
         Text("No collections yet")
@@ -488,6 +493,7 @@ private struct LibraryCard: View {
 }
 
 private struct InspectorView: View {
+  @Environment(PasteQueueModel.self) private var pasteQueue: PasteQueueModel?
   let model: LibraryModel
   @State private var copyError = false
   @State private var ocrStatus: OCRJobStatus?
@@ -745,6 +751,21 @@ private struct InspectorView: View {
       }
       .buttonStyle(.borderedProminent)
       transformMenu(for: clip)
+      if let pasteQueue {
+        Button {
+          pasteQueue.add(clip.id)
+        } label: {
+          Label("Add to Queue", systemImage: "text.badge.plus")
+        }
+        .buttonStyle(.borderless)
+        .help("Add to the Paste Queue; ⌃⌥V pastes queued clips in order")
+        // The only feedback a click gets: the queue count changes in place.
+        if pasteQueue.count > 0 {
+          Text("\(pasteQueue.count) queued")
+            .font(.system(size: 11.5).monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+      }
       Spacer()
       Button(role: .destructive) {
         Task { await model.delete(id: clip.id) }

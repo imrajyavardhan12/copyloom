@@ -170,7 +170,7 @@ private final class QuickPasteDeliverySpy: ClipDelivering {
   }
 }
 
-private actor QuickPasteRepositorySpy: ClipRepository {
+actor QuickPasteRepositorySpy: ClipRepository {
   struct Use: Equatable, Sendable {
     let id: UUID
     let date: Date
@@ -191,6 +191,7 @@ private actor QuickPasteRepositorySpy: ClipRepository {
   private let imageData: [UUID: Data]
   private var searchQuery: SearchQuery?
   private var use: Use?
+  private var uses: [Use] = []
   private var pin: Pin?
   private var favorite: Favorite?
   private var deleted: UUID?
@@ -271,6 +272,11 @@ private actor QuickPasteRepositorySpy: ClipRepository {
 
   func recordUse(id: UUID, at date: Date) async throws {
     use = Use(id: id, date: date)
+    uses.append(Use(id: id, date: date))
+  }
+
+  func clip(id: UUID) async throws -> ClipSummary? {
+    clips.first { $0.id == id }
   }
 
   func delete(id: UUID, at date: Date) async throws {
@@ -289,6 +295,7 @@ private actor QuickPasteRepositorySpy: ClipRepository {
 
   func lastSearchQuery() -> SearchQuery? { searchQuery }
   func recordedUse() -> Use? { use }
+  func recordedUses() -> [Use] { uses }
   func pinnedMutation() -> Pin? { pin }
   func favoriteMutation() -> Favorite? { favorite }
   func deletedID() -> UUID? { deleted }
