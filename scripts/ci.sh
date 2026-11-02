@@ -26,6 +26,13 @@ xcrun swift test \
     --package-path Packages/CopyloomKit \
     --scratch-path "$ROOT/.build/SwiftPM"
 
+printf '\n==> Archive benchmark CLI smoke tests\n'
+SWIFT_BIN_DIR="$(xcrun swift build \
+    --package-path Packages/CopyloomKit \
+    --scratch-path "$ROOT/.build/SwiftPM" \
+    --show-bin-path)"
+python3 scripts/test-archive-bench.py "$SWIFT_BIN_DIR/copyloom-archive-bench"
+
 printf '\n==> Unsigned app build\n'
 xcodebuild \
     -quiet \

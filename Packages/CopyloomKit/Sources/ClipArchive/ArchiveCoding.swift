@@ -72,20 +72,28 @@ enum ArchiveHashing {
     var lines = 0
     var longest = 0
     var current = 0
-    while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
-      hasher.update(data: chunk)
-      bytes += chunk.count
-      chunk.withUnsafeBytes { buffer in
-        for byte in buffer {
-          if byte == 0x0A {
-            lines += 1
-            longest = max(longest, current)
-            current = 0
-          } else {
-            current += 1
+    while true {
+      // FileHandle can return autoreleased Foundation buffers. ARC dropping
+      // `chunk` is not enough: without a per-read pool, a synchronous scan
+      // retains archive-sized temporary storage until its caller's pool drains.
+      let hasChunk = try autoreleasepool {
+        guard let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty else { return false }
+        hasher.update(data: chunk)
+        bytes += chunk.count
+        chunk.withUnsafeBytes { buffer in
+          for byte in buffer {
+            if byte == 0x0A {
+              lines += 1
+              longest = max(longest, current)
+              current = 0
+            } else {
+              current += 1
+            }
           }
         }
+        return true
       }
+      if !hasChunk { break }
     }
     if current > 0 {
       lines += 1

@@ -26,3 +26,6 @@ App/Copyloom.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # Benchmark output
 Benchmarks/Results/
+
+# Developer Python tooling
+scripts/__pycache__/
