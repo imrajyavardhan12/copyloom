@@ -1,6 +1,23 @@
 import ClipDomain
 import Foundation
 
+/// Normalized sRGB channels and opacity for a recognized color literal.
+/// Presentation shares the transform parser; no stored content is changed.
+public struct ClipColorComponents: Equatable, Sendable {
+  public let red: Double
+  public let green: Double
+  public let blue: Double
+  public let alpha: Double
+
+  public init?(text: String) {
+    guard let color = ColorTransforms.parse(text) else { return nil }
+    red = Double(color.red) / 255
+    green = Double(color.green) / 255
+    blue = Double(color.blue) / 255
+    alpha = color.alpha
+  }
+}
+
 /// HEX / RGB / HSL conversions for clips classified as colors.
 ///
 /// Accepts exactly the shapes capture classifies as `.color` (`#rgb`,
@@ -13,9 +30,9 @@ enum ColorTransforms {
     transform(id: "color.hsl", title: "Convert to HSL", target: .hsl),
   ]
 
-  private enum Format: Equatable { case hex, rgb, hsl }
+  fileprivate enum Format: Equatable { case hex, rgb, hsl }
 
-  private struct Color {
+  fileprivate struct Color {
     var red: Int
     var green: Int
     var blue: Int
@@ -40,7 +57,7 @@ enum ColorTransforms {
 
   // MARK: - Parsing
 
-  private static func parse(_ input: String) -> Color? {
+  fileprivate static func parse(_ input: String) -> Color? {
     let text = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if text.hasPrefix("#") { return parseHex(text.dropFirst()) }
     if let open = text.firstIndex(of: "("), text.hasSuffix(")") {
@@ -61,11 +78,14 @@ enum ColorTransforms {
     guard [3, 4, 6, 8].contains(hex.count), hex.allSatisfy(\.isHexDigit) else { return nil }
     var digits = Array(hex)
     if digits.count <= 4 { digits = digits.flatMap { [$0, $0] } }
-    func byte(_ offset: Int) -> Int {
-      Int(String(digits[offset...offset + 1]), radix: 16) ?? 0
-    }
-    let alpha = digits.count == 8 ? Double(byte(6)) / 255 : 1
-    return Color(red: byte(0), green: byte(2), blue: byte(4), alpha: alpha, format: .hex)
+    // isHexDigit also accepts Unicode forms that radix parsing does not.
+    // Fail the whole literal instead of substituting zero for bad bytes.
+    guard let value = UInt64(String(digits), radix: 16) else { return nil }
+    let hasAlpha = digits.count == 8
+    let rgb = hasAlpha ? value >> 8 : value
+    return Color(
+      red: Int((rgb >> 16) & 0xFF), green: Int((rgb >> 8) & 0xFF), blue: Int(rgb & 0xFF),
+      alpha: hasAlpha ? Double(value & 0xFF) / 255 : 1, format: .hex)
   }
 
   private static func parseRGB(_ parts: [String], hasAlpha: Bool) -> Color? {

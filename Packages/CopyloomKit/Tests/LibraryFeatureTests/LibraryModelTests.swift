@@ -1,5 +1,7 @@
+import AppKit
 import ClipDomain
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import LibraryFeature
@@ -229,6 +231,196 @@ struct LibraryModelTests {
     #expect(await model.ocrStatus(for: UUID()) == nil)
   }
 
+  @Test(
+    "a visible inspector follows pending OCR to its terminal state without reselection",
+    arguments: [OCRJobStatus.indexed, .withheld])
+  func inspectorFollowsOCR(terminal: OCRJobStatus) async {
+    let clip = summary(kind: .image)
+    let repository = LibraryRepositorySpy(results: [clip])
+    await repository.seedOCRTransitions(id: clip.id, statuses: [.pending, terminal])
+    let model = LibraryModel(repository: repository, ocrRefreshWait: {})
+    await model.refresh()
+    model.select(id: clip.id)
+    model.setInspectorPresented(true)
+
+    await model.observeSelectedOCRStatus()
+
+    #expect(model.selectedID == clip.id)
+    #expect(model.selectedOCRStatus == terminal)
+  }
+
+  @Test("changing selection immediately clears the previous image's OCR status")
+  func inspectorClearsOnSelection() async {
+    let image = summary(kind: .image)
+    let text = summary(kind: .text)
+    let repository = LibraryRepositorySpy(results: [image, text])
+    await repository.seedOCR(id: image.id, status: .withheld)
+    let model = LibraryModel(repository: repository)
+    await model.refresh()
+    model.select(id: image.id)
+    model.setInspectorPresented(true)
+    await model.observeSelectedOCRStatus()
+    #expect(model.selectedOCRStatus == .withheld)
+
+    model.select(id: text.id)
+
+    #expect(model.selectedOCRStatus == nil)
+  }
+
+  @Test(
+    "late OCR reads cannot replace a newer inspector selection or presentation",
+    arguments: [false, true])
+  func inspectorDiscardsLateReads(reopenSameClip: Bool) async {
+    let first = summary(kind: .image)
+    let next = reopenSameClip ? first : summary(kind: .image)
+    let repository = LibraryRepositorySpy(results: reopenSameClip ? [first] : [first, next])
+    let gate = OCRReadGate()
+    await repository.seedOCR(id: first.id, status: .withheld)
+    await repository.suspendOCRRead(id: first.id, gate: gate)
+    let model = LibraryModel(repository: repository)
+    await model.refresh()
+    model.select(id: first.id)
+    model.setInspectorPresented(true)
+    let oldObservation = Task { await model.observeSelectedOCRStatus() }
+    await gate.waitUntilEntered()
+
+    model.setInspectorPresented(false)
+    model.select(id: next.id)
+    await repository.seedOCR(id: next.id, status: .indexed)
+    model.setInspectorPresented(true)
+    await model.observeSelectedOCRStatus()
+    #expect(model.selectedOCRStatus == .indexed)
+    await gate.release()
+    await oldObservation.value
+
+    #expect(model.selectedID == next.id)
+    #expect(model.selectedOCRStatus == .indexed)
+  }
+
+  @Test("an OCR status read failure is unavailable, not completed or endlessly indexing")
+  func inspectorReportsStatusFailure() async {
+    let clip = summary(kind: .image)
+    let repository = LibraryRepositorySpy(results: [clip])
+    await repository.failOCRReads()
+    let model = LibraryModel(repository: repository)
+    await model.refresh()
+    model.select(id: clip.id)
+    model.setInspectorPresented(true)
+
+    await model.observeSelectedOCRStatus()
+
+    #expect(model.selectedOCRStatus == nil)
+    #expect(model.isOCRStatusUnavailable)
+  }
+
+  @Test("an already cancelled observer cannot interrupt the current pending image")
+  func cancelledObserverCannotDisplaceCurrent() async {
+    let clip = summary(kind: .image)
+    let repository = LibraryRepositorySpy(results: [clip])
+    await repository.seedOCR(id: clip.id, status: .pending)
+    let wait = OCRReadGate()
+    let model = LibraryModel(repository: repository, ocrRefreshWait: { await wait.wait() })
+    await model.refresh()
+    model.select(id: clip.id)
+    model.setInspectorPresented(true)
+    let current = Task { await model.observeSelectedOCRStatus() }
+    await wait.waitUntilEntered()
+    let cancelled = Task { await model.observeSelectedOCRStatus() }
+    cancelled.cancel()
+    await cancelled.value
+    await repository.seedOCR(id: clip.id, status: .withheld)
+    await wait.release()
+    await current.value
+
+    #expect(model.selectedOCRStatus == .withheld)
+  }
+
+  @Test("hiding a pending inspector clears its status and stops refreshing")
+  func inspectorStopsWhenHidden() async {
+    let clip = summary(kind: .image)
+    let repository = LibraryRepositorySpy(results: [clip])
+    await repository.seedOCR(id: clip.id, status: .pending)
+    let wait = OCRReadGate()
+    let model = LibraryModel(repository: repository, ocrRefreshWait: { await wait.wait() })
+    await model.refresh()
+    model.select(id: clip.id)
+    model.setInspectorPresented(true)
+    let observation = Task { await model.observeSelectedOCRStatus() }
+    await wait.waitUntilEntered()
+    #expect(model.selectedOCRStatus == .pending)
+
+    model.setInspectorPresented(false)
+    #expect(model.selectedOCRStatus == nil)
+    await repository.seedOCR(id: clip.id, status: .withheld)
+    await wait.release()
+    await observation.value
+
+    #expect(model.selectedOCRStatus == nil)
+    #expect(!model.isOCRStatusUnavailable)
+  }
+
+  @Test("cancelling an in-flight read cannot publish its late OCR result")
+  func inspectorDiscardsCancelledRead() async {
+    let clip = summary(kind: .image)
+    let repository = LibraryRepositorySpy(results: [clip])
+    await repository.seedOCR(id: clip.id, status: .withheld)
+    let read = OCRReadGate()
+    await repository.suspendOCRRead(id: clip.id, gate: read)
+    let model = LibraryModel(repository: repository)
+    await model.refresh()
+    model.select(id: clip.id)
+    model.setInspectorPresented(true)
+    let observation = Task { await model.observeSelectedOCRStatus() }
+    await read.waitUntilEntered()
+
+    observation.cancel()
+    await read.release()
+    await observation.value
+
+    #expect(model.selectedOCRStatus == nil)
+    #expect(!model.isOCRStatusUnavailable)
+  }
+
+  @Test("a pending OCR job disappearing clears the spinner without an error")
+  func inspectorStopsWhenJobDisappears() async {
+    let clip = summary(kind: .image)
+    let repository = LibraryRepositorySpy(results: [clip])
+    await repository.seedOCR(id: clip.id, status: .pending)
+    let wait = OCRReadGate()
+    let model = LibraryModel(repository: repository, ocrRefreshWait: { await wait.wait() })
+    await model.refresh()
+    model.select(id: clip.id)
+    model.setInspectorPresented(true)
+    let observation = Task { await model.observeSelectedOCRStatus() }
+    await wait.waitUntilEntered()
+    await repository.removeOCRJob(id: clip.id)
+    await wait.release()
+    await observation.value
+
+    #expect(model.selectedOCRStatus == nil)
+    #expect(!model.isOCRStatusUnavailable)
+  }
+
+  @Test("hidden and non-image inspectors do not show OCR errors or statuses")
+  func inspectorIgnoresInactiveClips() async {
+    let image = summary(kind: .image)
+    let text = summary(kind: .text)
+    let repository = LibraryRepositorySpy(results: [image, text])
+    await repository.failOCRReads()
+    let model = LibraryModel(repository: repository)
+    await model.refresh()
+    model.select(id: image.id)
+    await model.observeSelectedOCRStatus()
+    #expect(model.selectedOCRStatus == nil)
+    #expect(!model.isOCRStatusUnavailable)
+
+    model.select(id: text.id)
+    model.setInspectorPresented(true)
+    await model.observeSelectedOCRStatus()
+    #expect(model.selectedOCRStatus == nil)
+    #expect(!model.isOCRStatusUnavailable)
+  }
+
   @Test("searching returns to section scope from collections")
   func searchClearsActives() async throws {
     let repository = LibraryRepositorySpy(results: [])
@@ -392,6 +584,81 @@ struct LibraryModelTests {
   }
 }
 
+@MainActor
+@Suite("Hosted inspector observation", .serialized)
+struct HostedInspectorObservationTests {
+  @Test(
+    "SwiftUI restarts OCR after coalesced selection or visibility changes",
+    arguments: [false, true])
+  func coalescedChangesRestartObserver(changeSelection: Bool) async {
+    let first = image()
+    let second = image()
+    let repository = LibraryRepositorySpy(results: [first, second])
+    await repository.seedOCR(id: first.id, status: .pending)
+    let model = LibraryModel(
+      repository: repository, ocrRefreshWait: { try await Task.sleep(for: .milliseconds(10)) })
+    await model.refresh()
+    model.select(id: first.id)
+    model.setInspectorPresented(true)
+    NSApplication.shared.setActivationPolicy(.prohibited)
+    let window = NSWindow(
+      contentRect: NSRect(x: -20_000, y: -20_000, width: 200, height: 100),
+      styleMask: [.borderless], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = NSHostingView(rootView: InspectorObservationHost(model: model))
+    window.orderFrontRegardless()
+    defer {
+      model.setInspectorPresented(false)
+      window.contentView = nil
+      window.close()
+    }
+    guard await waitUntil({ model.selectedOCRStatus == .pending }) else {
+      Issue.record("Hosted inspector never displayed its initial pending state")
+      return
+    }
+
+    // Do not yield between the two mutations, and do not manually start a
+    // replacement observer: SwiftUI must notice the new observation epoch.
+    if changeSelection {
+      model.select(id: second.id)
+      model.select(id: first.id)
+    } else {
+      model.setInspectorPresented(false)
+      model.setInspectorPresented(true)
+    }
+    await repository.seedOCR(id: first.id, status: .withheld)
+
+    #expect(await waitUntil({ model.selectedOCRStatus == .withheld }))
+  }
+
+  private func image() -> ClipSummary {
+    ClipSummary(
+      id: UUID(), kind: .image, text: "", createdAt: .now, lastSeenAt: .now,
+      copyCount: 1, isPinned: false, isFavorite: false, source: nil)
+  }
+
+  /// A generous failure watchdog, not a UI latency/performance assertion.
+  private func waitUntil(_ condition: () -> Bool) async -> Bool {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+    while !condition(), ContinuousClock.now < deadline {
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    return condition()
+  }
+}
+
+@MainActor
+private struct InspectorObservationHost: View {
+  let model: LibraryModel
+
+  var body: some View {
+    Text(model.selectedOCRStatus == nil ? "Unknown" : "Known")
+      .task(id: model.inspectorObservationRevision) {
+        await model.observeSelectedOCRStatus()
+      }
+  }
+}
+
 private actor LibraryRepositorySpy: ClipRepository {
   private let results: [ClipSummary]
   private var queries: [SearchQuery] = []
@@ -406,6 +673,9 @@ private actor LibraryRepositorySpy: ClipRepository {
   private var untagged: [(UUID, String)] = []
   private var collectionReads: [UUID] = []
   private var ocrJobs: [UUID: OCRJobInfo] = [:]
+  private var ocrTransitions: [UUID: [OCRJobStatus]] = [:]
+  private var ocrReadGates: [UUID: OCRReadGate] = [:]
+  private var ocrReadsFail = false
   private var savedTexts: [AcceptedTextClip] = []
   private var failSaves = false
 
@@ -436,7 +706,30 @@ private actor LibraryRepositorySpy: ClipRepository {
 
   func attachmentData(for id: UUID) async throws -> Data? { nil }
 
-  func ocrJob(for id: UUID) async throws -> OCRJobInfo? { ocrJobs[id] }
+  func ocrJob(for id: UUID) async throws -> OCRJobInfo? {
+    if ocrReadsFail { throw TestError.unexpectedCall }
+    if var statuses = ocrTransitions[id], !statuses.isEmpty {
+      ocrJobs[id] = OCRJobInfo(status: statuses.removeFirst(), attempts: 0)
+      ocrTransitions[id] = statuses
+    }
+    let job = ocrJobs[id]
+    if let gate = ocrReadGates.removeValue(forKey: id) {
+      await gate.wait()
+    }
+    return job
+  }
+
+  func failOCRReads() { ocrReadsFail = true }
+
+  func removeOCRJob(id: UUID) { ocrJobs[id] = nil }
+
+  func suspendOCRRead(id: UUID, gate: OCRReadGate) {
+    ocrReadGates[id] = gate
+  }
+
+  func seedOCRTransitions(id: UUID, statuses: [OCRJobStatus]) {
+    ocrTransitions[id] = statuses
+  }
 
   func seedOCR(id: UUID, status: OCRJobStatus) {
     ocrJobs[id] = OCRJobInfo(status: status, attempts: 0)
@@ -564,6 +857,32 @@ private actor LibraryRepositorySpy: ClipRepository {
   func favoriteMutations() -> [(UUID, Bool)] { favorites }
 
   func deletedIDs() -> [UUID] { deleted }
+}
+
+private actor OCRReadGate {
+  private var entered = false
+  private var released = false
+  private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+  private var readWaiters: [CheckedContinuation<Void, Never>] = []
+
+  func wait() async {
+    entered = true
+    for waiter in entryWaiters { waiter.resume() }
+    entryWaiters.removeAll()
+    guard !released else { return }
+    await withCheckedContinuation { readWaiters.append($0) }
+  }
+
+  func waitUntilEntered() async {
+    guard !entered else { return }
+    await withCheckedContinuation { entryWaiters.append($0) }
+  }
+
+  func release() {
+    released = true
+    for waiter in readWaiters { waiter.resume() }
+    readWaiters.removeAll()
+  }
 }
 
 private enum TestError: Error {

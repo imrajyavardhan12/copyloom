@@ -26,6 +26,7 @@
       ProcessInfo.processInfo.environment["COPYLOOM_PREVIEW"] == "1"
     }
 
+    private static var failedHostChecks = 0
     static let dataDirectoryName = "Copyloom-Preview"
 
     static func launch(
@@ -50,9 +51,14 @@
               scheme: scheme, model: model, repository: repository,
               libraryModel: libraryModel, into: output)
           }
+          guard failedHostChecks == 0 else {
+            log("preview host checks failed")
+            exit(1)
+          }
           log("preview done")
         } catch {
-          log("preview failed: \(error)")
+          log("preview failed")
+          exit(1)
         }
         NSApp.terminate(nil)
       }
@@ -179,6 +185,11 @@
       }
     }
 
+    static func check(_ name: String, passed: Bool) {
+      log("preview check \(name): passed=\(passed)")
+      if !passed { failedHostChecks += 1 }
+    }
+
     static func log(_ message: String) {
       FileHandle.standardError.write(Data((message + "\n").utf8))
     }
@@ -194,6 +205,8 @@
       into directory: URL
     ) async {
       let appearance = NSAppearance(named: scheme == "dark" ? .darkAqua : .aqua)
+      libraryModel.setInspectorPresented(true)
+      defer { libraryModel.setInspectorPresented(false) }
 
       // Library, list density, first text clip selected.
       await libraryModel.select(section: .history)
@@ -231,6 +244,11 @@
       await render(
         LibraryView(model: libraryModel), size: CGSize(width: 1100, height: 700),
         name: "library-image-\(scheme)", appearance: appearance, in: directory)
+      if let image = libraryModel.selectedClip {
+        await renderOCRStates(
+          sourceImage: image, repository: repository, scheme: scheme,
+          appearance: appearance, into: directory)
+      }
 
       // Colors section.
       await libraryModel.select(section: .colors)
@@ -238,6 +256,7 @@
       await render(
         LibraryView(model: libraryModel), size: CGSize(width: 1100, height: 700),
         name: "library-colors-\(scheme)", appearance: appearance, in: directory)
+      await renderColorStates(scheme: scheme, appearance: appearance, into: directory)
 
       // Empty state.
       await libraryModel.select(section: .favorites)
@@ -275,12 +294,138 @@
         name: "settings-\(scheme)", appearance: appearance, in: directory)
     }
 
+    /// Stable OCR presentation states in a throwaway store. The app's real
+    /// OCR worker never sees this store, so pending cannot race to indexed
+    /// while the snapshot is rendered. No real history or private pixels.
+    private static func renderOCRStates(
+      sourceImage: ClipSummary, repository: any ClipRepository, scheme: String,
+      appearance: NSAppearance?, into directory: URL
+    ) async {
+      let scratch = directory.appending(path: "PreviewOCR-\(UUID().uuidString)")
+      do {
+        guard let data = try await repository.attachmentData(for: sourceImage.id),
+          let meta = try await repository.attachment(for: sourceImage.id)
+        else {
+          PreviewMode.check("ocr-fixtures-\(scheme)", passed: false)
+          return
+        }
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        let database = try AppDatabase.open(at: scratch.appending(path: "copyloom.sqlite"))
+        defer {
+          try? database.close()
+          try? FileManager.default.removeItem(at: scratch)
+        }
+        let image = try await database.repository.saveAcceptedImage(
+          AcceptedImageClip(
+            id: UUID(), data: data, uti: meta.uti, width: meta.width, height: meta.height,
+            capturedAt: .now, source: nil))
+        let model = LibraryModel(repository: database.repository)
+        await model.select(section: .images)
+        model.select(id: image.id)
+        defer { model.setInspectorPresented(false) }
+        for status in [OCRJobStatus.pending, .withheld, .indexed] {
+          switch status {
+          case .pending: break
+          case .withheld:
+            try await database.repository.markOCRWithheld(clipID: image.id, at: .now)
+          case .indexed:
+            try await database.repository.markOCRIndexed(
+              clipID: image.id, text: "Synthetic preview image", at: .now)
+          }
+          model.setInspectorPresented(true)
+          await render(
+            LibraryView(model: model), size: CGSize(width: 1100, height: 700),
+            name: "library-ocr-\(status)-\(scheme)", appearance: appearance,
+            afterSnapshot: {
+              guard status == .pending else { return }
+              let initiallyPending = model.selectedOCRStatus == .pending
+              model.setInspectorPresented(false)
+              model.setInspectorPresented(true)
+              do {
+                try await database.repository.markOCRWithheld(clipID: image.id, at: .now)
+                let completed = await waitUntil { model.selectedOCRStatus == .withheld }
+                PreviewMode.check(
+                  "ocr-coalesced-reopen-\(scheme)", passed: initiallyPending && completed)
+              } catch {
+                PreviewMode.check("ocr-coalesced-reopen-\(scheme)", passed: false)
+              }
+            }, in: directory)
+          model.setInspectorPresented(false)
+        }
+      } catch {
+        PreviewMode.check("ocr-fixtures-\(scheme)", passed: false)
+      }
+    }
+
+    private static func renderColorStates(
+      scheme: String, appearance: NSAppearance?, into directory: URL
+    ) async {
+      let scratch = directory.appending(path: "PreviewColors-\(UUID().uuidString)")
+      do {
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        let database = try AppDatabase.open(at: scratch.appending(path: "copyloom.sqlite"))
+        defer {
+          try? database.close()
+          try? FileManager.default.removeItem(at: scratch)
+        }
+        let fixtures = [
+          ("rgb", "rgb(255, 99, 71)"), ("hsl", "hsl(262, 83%, 58%)"),
+          ("hex", "#3B82F6"), ("rgba", "rgba(0, 128, 255, 0.5)"),
+          ("hsla", "hsla(150, 60%, 45%, 0.5)"), ("alphahex", "#1234"),
+        ]
+        var ids: [String: UUID] = [:]
+        for (index, fixture) in fixtures.enumerated() {
+          guard TextOutputGate().kind(for: fixture.1) == .color else {
+            PreviewMode.check("color-fixtures-\(scheme)", passed: false)
+            return
+          }
+          let clip = try await database.repository.saveAcceptedText(
+            AcceptedTextClip(
+              id: UUID(), kind: .color, text: fixture.1,
+              capturedAt: Date().addingTimeInterval(-Double(index)), source: nil))
+          ids[fixture.0] = clip.id
+        }
+        let model = LibraryModel(repository: database.repository)
+        await model.select(section: .colors)
+        model.setInspectorPresented(true)
+        defer { model.setInspectorPresented(false) }
+        for name in ["rgb", "hsl"] {
+          model.select(id: ids[name])
+          await render(
+            LibraryView(model: model), size: CGSize(width: 1100, height: 700),
+            name: "library-color-\(name)-\(scheme)", appearance: appearance, in: directory)
+        }
+        model.setDensity(.cards)
+        await render(
+          LibraryView(model: model), size: CGSize(width: 1100, height: 700),
+          name: "library-color-cards-\(scheme)", appearance: appearance, in: directory)
+        PreviewMode.log("preview accessibility library-color-cards-\(scheme): ownerCheck=pending")
+        let quickPaste = QuickPasteModel(
+          repository: database.repository, delivery: PreviewDelivery())
+        await render(
+          QuickPasteView(model: quickPaste), size: CGSize(width: 680, height: 460),
+          name: "quickpaste-colors-\(scheme)", appearance: appearance,
+          paintsBackground: false, in: directory)
+      } catch {
+        PreviewMode.check("color-fixtures-\(scheme)", passed: false)
+      }
+    }
+
+    private static func waitUntil(_ condition: () -> Bool) async -> Bool {
+      let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+      while !condition(), ContinuousClock.now < deadline {
+        try? await Task.sleep(for: .milliseconds(20))
+      }
+      return condition()
+    }
+
     private static func render<Content: View>(
       _ view: Content,
       size: CGSize,
       name: String,
       appearance: NSAppearance?,
       paintsBackground: Bool = true,
+      afterSnapshot: (@MainActor () async -> Void)? = nil,
       in directory: URL
     ) async {
       let framed = view.frame(width: size.width, height: size.height)
@@ -291,6 +436,11 @@
       let window = NSWindow(
         contentRect: host.frame, styleMask: [.titled, .fullSizeContentView],
         backing: .buffered, defer: false)
+      window.isReleasedWhenClosed = false
+      defer {
+        window.contentView = nil
+        window.close()
+      }
       window.appearance = appearance
       window.contentView = host
       window.titlebarAppearsTransparent = true
@@ -300,14 +450,12 @@
       try? await Task.sleep(for: .milliseconds(900))
       host.layoutSubtreeIfNeeded()
       guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
-        PreviewMode.log("snapshot failed (no bitmap): \(name)")
-        window.orderOut(nil)
+        PreviewMode.check("snapshot-\(name)", passed: false)
         return
       }
       host.cacheDisplay(in: host.bounds, to: rep)
-      window.orderOut(nil)
       guard let png = rep.representation(using: .png, properties: [:]) else {
-        PreviewMode.log("snapshot failed (no png): \(name)")
+        PreviewMode.check("snapshot-\(name)", passed: false)
         return
       }
       let url = directory.appending(path: "\(name).png")
@@ -315,8 +463,9 @@
         try png.write(to: url)
         PreviewMode.log("wrote \(url.lastPathComponent)")
       } catch {
-        PreviewMode.log("snapshot write failed: \(name): \(error)")
+        PreviewMode.check("snapshot-\(name)", passed: false)
       }
+      await afterSnapshot?()
     }
   }
 

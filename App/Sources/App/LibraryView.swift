@@ -444,11 +444,14 @@ private struct LibraryCard: View {
           isSelected: false,
           style: .fill(height: Self.contentHeight)
         )
-      } else if clip.kind == .color, let swatch = Color(hex: clip.text) {
+      } else if clip.kind == .color, let swatch = Color(clipColor: clip.text) {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
           .fill(swatch)
           .frame(maxWidth: .infinity)
           .frame(height: Self.contentHeight)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel("Color, \(String(clip.text.prefix(200)))")
+          .accessibilityIdentifier("clip.color.swatch")
       } else {
         Text(String(clip.text.prefix(200)))
           .font(.system(.body, design: clip.kind == .code ? .monospaced : .default))
@@ -496,7 +499,6 @@ private struct InspectorView: View {
   @Environment(PasteQueueModel.self) private var pasteQueue: PasteQueueModel?
   let model: LibraryModel
   @State private var copyError = false
-  @State private var ocrStatus: OCRJobStatus?
   @State private var previewImage: NSImage?
   @State private var previewFailed = false
   @State private var attachmentInfo: ClipAttachment?
@@ -529,15 +531,23 @@ private struct InspectorView: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
+      .task(id: model.inspectorObservationRevision) {
+        await model.observeSelectedOCRStatus()
+      }
       .task(id: clip.id) { @MainActor in
-        ocrStatus = await model.ocrStatus(for: clip.id)
+        guard !Task.isCancelled, model.selectedID == clip.id else { return }
         previewImage = nil
         previewFailed = false
         attachmentInfo = nil
+        copyError = false
         guard clip.kind == .image else { return }
-        previewImage = await model.loadPreview(for: clip)
-        previewFailed = previewImage == nil
-        attachmentInfo = try? await model.attachmentMeta(for: clip.id)
+        let image = await model.loadPreview(for: clip)
+        guard !Task.isCancelled, model.selectedID == clip.id else { return }
+        let info = try? await model.attachmentMeta(for: clip.id)
+        guard !Task.isCancelled, model.selectedID == clip.id else { return }
+        previewImage = image
+        previewFailed = image == nil
+        attachmentInfo = info
       }
     } else {
       ContentUnavailableView(
@@ -638,7 +648,7 @@ private struct InspectorView: View {
   @ViewBuilder
   private func colorPreview(for clip: ClipSummary) -> some View {
     VStack(alignment: .leading, spacing: 10) {
-      if let swatch = Color(hex: clip.text) {
+      if let swatch = Color(clipColor: clip.text) {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
           .fill(swatch)
           .frame(height: 96)
@@ -859,7 +869,13 @@ private struct InspectorView: View {
   @ViewBuilder
   private func ocrBanner(for clip: ClipSummary) -> some View {
     if clip.kind == .image {
-      switch ocrStatus {
+      if model.isOCRStatusUnavailable {
+        Label("Image text status unavailable", systemImage: "exclamationmark.triangle")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .help("Select another clip, then return to this image to retry.")
+      }
+      switch model.selectedOCRStatus {
       case .withheld:
         HStack(spacing: 8) {
           Image(systemName: "eye.slash.fill")
@@ -929,37 +945,6 @@ private struct InspectorView: View {
     } catch {
       copyError = true
     }
-  }
-}
-
-extension Color {
-  /// Parses `#rgb`, `#rgba`, `#rrggbb` and `#rrggbbaa` (case-insensitive).
-  /// Functional notations are intentionally unsupported here.
-  init?(hex: String) {
-    var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard value.hasPrefix("#") else { return nil }
-    value.removeFirst()
-    guard [3, 4, 6, 8].contains(value.count),
-      value.allSatisfy(\.isHexDigit)
-    else {
-      return nil
-    }
-    if value.count <= 4 {
-      value = value.flatMap { [$0, $0] }.map(String.init).joined()
-    }
-    guard let rgb = UInt64(value.prefix(6), radix: 16) else { return nil }
-    let alpha: Double
-    if value.count == 8, let byte = UInt64(value.suffix(2), radix: 16) {
-      alpha = Double(byte) / 255
-    } else {
-      alpha = 1
-    }
-    self.init(
-      red: Double((rgb >> 16) & 0xFF) / 255,
-      green: Double((rgb >> 8) & 0xFF) / 255,
-      blue: Double(rgb & 0xFF) / 255,
-      opacity: alpha
-    )
   }
 }
 

@@ -1,5 +1,6 @@
 import AppKit
 import ClipDomain
+import ClipTransforms
 import SwiftUI
 
 /// Presentation pieces shared by Quick Paste and the Library, so a clip looks
@@ -56,9 +57,8 @@ enum ClipStyle {
   static let hairline = Color.primary.opacity(0.08)
 }
 
-/// Kind icon for list rows. Images resolve thumbnails; hex colors show their
-/// swatch (functional notations keep the palette icon; the Transform menu
-/// converts them to hex).
+/// Kind icon for list rows. Images resolve thumbnails; recognized HEX, RGB
+/// and HSL color literals share the transform parser and show their swatch.
 struct KindBadge: View {
   let clip: ClipSummary
   let loadThumbnail: @MainActor @Sendable () async -> NSImage?
@@ -72,7 +72,7 @@ struct KindBadge: View {
       case .code:
         badge("chevron.left.forwardslash.chevron.right")
       case .color:
-        if let swatch = Color(hex: clip.text) {
+        if let swatch = Color(clipColor: clip.text) {
           RoundedRectangle(cornerRadius: 7, style: .continuous)
             .fill(swatch)
             .overlay {
@@ -102,5 +102,15 @@ struct KindBadge: View {
       .font(.system(size: 14, weight: .regular))
       .foregroundStyle(isSelected ? Color.primary : Color.secondary)
       .frame(width: 28, height: 28)
+  }
+}
+
+extension Color {
+  /// One parser for row, card and inspector swatches, matching transforms.
+  init?(clipColor: String) {
+    guard let components = ClipColorComponents(text: clipColor) else { return nil }
+    self.init(
+      .sRGB, red: components.red, green: components.green, blue: components.blue,
+      opacity: components.alpha)
   }
 }

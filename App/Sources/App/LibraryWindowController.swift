@@ -17,7 +17,7 @@ import SwiftUI
 /// Doing that mid-`init` is a nested graph update and aborts the process
 /// (reproduced whenever the saved size differed from the default).
 @MainActor
-final class LibraryWindowController {
+final class LibraryWindowController: NSObject, NSWindowDelegate {
   private let model: LibraryModel
   private let pasteQueue: PasteQueueModel?
   private var window: NSWindow?
@@ -25,6 +25,7 @@ final class LibraryWindowController {
   init(model: LibraryModel, pasteQueue: PasteQueueModel? = nil) {
     self.model = model
     self.pasteQueue = pasteQueue
+    super.init()
   }
 
   var isVisible: Bool { window?.isVisible ?? false }
@@ -38,10 +39,25 @@ final class LibraryWindowController {
     // focus-preserving panel: activation is intended here.
     NSApp.activate()
     ensureWindow().makeKeyAndOrderFront(nil)
+    updateInspectorPresentation()
   }
 
   func hide() {
+    model.setInspectorPresented(false)
     window?.orderOut(nil)
+  }
+
+  func windowWillClose(_ notification: Notification) {
+    model.setInspectorPresented(false)
+  }
+
+  func windowDidChangeOcclusionState(_ notification: Notification) {
+    updateInspectorPresentation()
+  }
+
+  private func updateInspectorPresentation() {
+    model.setInspectorPresented(
+      window?.isVisible == true && window?.occlusionState.contains(.visible) == true)
   }
 
   private func ensureWindow() -> NSWindow {
@@ -52,6 +68,7 @@ final class LibraryWindowController {
       backing: .buffered,
       defer: false
     )
+    window.delegate = self
     window.title = "Copyloom Library"
     window.contentView = NSHostingView(
       rootView: LibraryView(model: model).environment(pasteQueue))

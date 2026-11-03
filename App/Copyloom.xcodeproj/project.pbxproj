@@ -23,6 +23,7 @@
 		A2000000000000000000000E /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000000000000000000000B /* LibraryView.swift */; };
 		A2000000000000000000000F /* ClipThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000000000000000000000C /* ClipThumbnail.swift */; };
 		A20000000000000000000010 /* LibraryWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000000000000000000000D /* LibraryWindowController.swift */; };
+		A20000000000000000000011 /* ClipTransforms in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000006 /* ClipTransforms */; };
 		A200000000000000000000FA /* PreviewMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000000FA /* PreviewMode.swift */; };
 		A200000000000000000000FB /* ClipPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000000FB /* ClipPresentation.swift */; };
 		A200000000000000000000FC /* LibraryExportFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000000FC /* LibraryExportFlow.swift */; };
@@ -63,6 +64,7 @@
 				A20000000000000000000005 /* ClipDomain in Frameworks */,
 				A2000000000000000000000A /* QuickPasteFeature in Frameworks */,
 				A2000000000000000000000D /* LibraryFeature in Frameworks */,
+				A20000000000000000000011 /* ClipTransforms in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -139,6 +141,7 @@
 				A90000000000000000000002 /* ClipboardCapture */,
 				A90000000000000000000003 /* ClipDomain */,
 				A90000000000000000000004 /* QuickPasteFeature */,
+				A90000000000000000000006 /* ClipTransforms */,
 			);
 			productName = Copyloom;
 			productReference = A30000000000000000000003 /* Copyloom.app */;
@@ -443,6 +446,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A80000000000000000000001 /* XCLocalSwiftPackageReference "../Packages/CopyloomKit" */;
 			productName = QuickPasteFeature;
+		};
+		A90000000000000000000006 /* ClipTransforms */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A80000000000000000000001 /* XCLocalSwiftPackageReference "../Packages/CopyloomKit" */;
+			productName = ClipTransforms;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

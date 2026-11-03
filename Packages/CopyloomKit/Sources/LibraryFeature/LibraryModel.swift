@@ -204,7 +204,21 @@ public final class LibraryModel {
   public private(set) var section: LibrarySection = .history
   public private(set) var density: LibraryDensity = .list
   public private(set) var items: [ClipSummary] = []
-  public private(set) var selectedID: UUID?
+  public private(set) var selectedID: UUID? {
+    didSet {
+      if selectedID != oldValue {
+        inspectorOCRGeneration &+= 1
+        inspectorObservationRevision &+= 1
+        selectedOCRStatus = nil
+        isOCRStatusUnavailable = false
+      }
+    }
+  }
+  public private(set) var isInspectorPresented = false
+  /// Stable task identity for a selection/presentation epoch, not an observer attempt.
+  public private(set) var inspectorObservationRevision = 0
+  public private(set) var selectedOCRStatus: OCRJobStatus?
+  public private(set) var isOCRStatusUnavailable = false
   public private(set) var isLoading = false
   public private(set) var errorMessage: String?
   public private(set) var collections: [ClipCollection] = []
@@ -221,9 +235,11 @@ public final class LibraryModel {
   @ObservationIgnored private let now: @MainActor @Sendable () -> Date
   @ObservationIgnored private let calendar: Calendar
   @ObservationIgnored private var requestGeneration = 0
+  @ObservationIgnored private var inspectorOCRGeneration = 0
   @ObservationIgnored private let transformRegistry: TransformRegistry
   @ObservationIgnored private let transformOutputKind: @Sendable (String) -> ClipKind?
   @ObservationIgnored private let makeID: @Sendable () -> UUID
+  @ObservationIgnored private let ocrRefreshWait: @Sendable () async throws -> Void
   @ObservationIgnored private let libraryExporter:
     (@Sendable (URL) async throws -> LibraryExportSummary)?
   @ObservationIgnored private var exportTask: Task<LibraryExportSummary, Error>?
@@ -245,8 +261,12 @@ public final class LibraryModel {
     makeID: @escaping @Sendable () -> UUID = { UUID() },
     libraryExporter: (@Sendable (URL) async throws -> LibraryExportSummary)? = nil,
     libraryImportPlanner: ImportAction? = nil,
-    libraryImporter: ImportAction? = nil
+    libraryImporter: ImportAction? = nil,
+    ocrRefreshWait: @escaping @Sendable () async throws -> Void = {
+      try await Task.sleep(for: .seconds(1))
+    }
   ) {
+    self.ocrRefreshWait = ocrRefreshWait
     self.libraryExporter = libraryExporter
     self.libraryImportPlanner = libraryImportPlanner
     self.libraryImporter = libraryImporter
@@ -730,6 +750,49 @@ public final class LibraryModel {
   /// quarantine banner; `.pending` as an indexing note.
   public func ocrStatus(for id: UUID) async -> OCRJobStatus? {
     try? await repository.ocrJob(for: id)?.status
+  }
+
+  public func setInspectorPresented(_ presented: Bool) {
+    guard presented != isInspectorPresented else { return }
+    isInspectorPresented = presented
+    inspectorOCRGeneration &+= 1
+    inspectorObservationRevision &+= 1
+    selectedOCRStatus = nil
+    isOCRStatusUnavailable = false
+  }
+
+  /// The view owns this task. Only a visible, selected pending image polls;
+  /// terminal/missing jobs stop, and stale or cancelled reads never publish.
+  public func observeSelectedOCRStatus() async {
+    guard !Task.isCancelled, isInspectorPresented, let clip = selectedClip, clip.kind == .image
+    else { return }
+    inspectorOCRGeneration &+= 1
+    let generation = inspectorOCRGeneration
+    isOCRStatusUnavailable = false
+    while isCurrentInspectorObservation(generation, clipID: clip.id) {
+      let status: OCRJobStatus?
+      do {
+        status = try await repository.ocrJob(for: clip.id)?.status
+      } catch {
+        guard isCurrentInspectorObservation(generation, clipID: clip.id) else { return }
+        selectedOCRStatus = nil
+        isOCRStatusUnavailable = true
+        return
+      }
+      guard isCurrentInspectorObservation(generation, clipID: clip.id) else { return }
+      selectedOCRStatus = status
+      guard status == .pending else { return }
+      do {
+        try await ocrRefreshWait()
+      } catch {
+        return
+      }
+    }
+  }
+
+  private func isCurrentInspectorObservation(_ generation: Int, clipID: UUID) -> Bool {
+    !Task.isCancelled && isInspectorPresented && selectedID == clipID
+      && generation == inspectorOCRGeneration
   }
 
   public func attachmentMeta(for id: UUID) async throws -> ClipAttachment? {
