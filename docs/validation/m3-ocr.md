@@ -48,6 +48,63 @@ result._
 - Result checksum **29130**, identical to the M2 record: text search behavior
   is unchanged by the added column.
 
+## Inspector refresh follow-up (2026-11-01)
+
+The inspector previously read status only when selection changed. It now
+observes the selected image while its Library window is visible, reading at
+most once per second while pending, and stopping on indexed/withheld/missing
+jobs. Close, hide, minimize or fully occlude the window to stop refresh work;
+showing it again reads fresh state. The OCR worker itself is unchanged.
+
+`LibraryModel` owns status, unavailable-state feedback and a stale-read
+generation token. A separate observable selection/presentation revision keys
+SwiftUI's observer task, so coalesced A → B → A or visible → hidden → visible
+changes still restart observation. Starting an observer does not change its
+task identity. Cancelled or superseded reads cannot paint another image's
+status. Read failures show "Image text status unavailable" rather than implying
+indexing completed. Select another clip and return, or reopen the Library, to
+retry.
+
+Automated evidence:
+
+- Nine new public-model tests (two parameterized) cover pending → indexed /
+  withheld without reselection, selection clearing, late replies after
+  selection or reopen, cancellation (including an already-cancelled observer
+  trying to replace the current one), hidden/non-image inspectors, disappearing
+  jobs and storage errors. Tests use controlled continuations, not time bounds
+  or repository call counts.
+- Hosted SwiftUI regressions coalesce selection and visibility ABA changes
+  without manually starting a replacement observer. Both failed to reach
+  withheld before the task-revision fix and pass afterward; their generous
+  deadline is a failure watchdog, not a latency target.
+- Local combined `./scripts/ci.sh`: 351 Swift tests and nine archive CLI/resource
+  checks passed, with strict format lint and unsigned app build.
+- Signed Debug preview rendered `library-ocr-{pending,withheld,indexed}-{light,dark}.png`
+  from a throwaway synthetic store, with no OCR worker racing its states.
+  All six images were inspected: pending shows the note/spinner, withheld
+  shows the orange warning and Delete action, indexed has neither banner.
+- The same preview's production-wired export/import checks emitted:
+  `import first: added=19 present=0`,
+  `import second: added=0 present=19 (idempotent=true)`, and
+  `import hostile: added=0 refused=1 credentialStored=false`.
+
+The signed preview also mounts the actual Library inspector on a pending
+image, coalesces hide/reopen and completes the job through the repository seam.
+It emits `preview check ocr-coalesced-reopen-light: passed=true` and the dark
+equivalent. Restoring the old clip-ID/visibility task key made both checks
+fail and preview exit 1; restoring the revision key made both pass. Failed
+hosted checks exit nonzero, and snapshot windows close afterward to cancel
+their tasks.
+
+This does **not** satisfy the real capture/recognition checks below. Additional
+owner checks, still pending: leave a pending image selected until indexing
+finishes (note disappears or becomes the withheld warning without reselection);
+switch images mid-scan (no old image's warning appears); hide/minimize and
+reopen the Library (fresh status for the current selection). Record failures
+here rather than treating model/preview evidence as live-window evidence.
+Rebuilding the signed Debug app invalidated its prior ad-hoc Accessibility
+identity; grant it once again before also testing automatic paste.
+
 ## Live evidence (owner, required before commit)
 
 Rebuild invalidates the ad-hoc signature: re-grant Accessibility for the new

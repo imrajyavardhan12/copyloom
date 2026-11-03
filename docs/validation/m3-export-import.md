@@ -18,6 +18,10 @@ result._
 - Package tests cover tamper, path safety, limits, export policy, idempotent
   import, merge rules, UUID collisions, gates, resume and the retention count
   (`docs/archive-format.md`, Test plan).
+- 100k live-clip Release round trips and re-imports are measured in
+  [m3-archive-benchmarks.md](m3-archive-benchmarks.md), including a fixed
+  archive-sized temporary-buffer retention issue. This is scale evidence,
+  not evidence of real folder grants or owner click-throughs.
 
 ## What only the owner can show
 

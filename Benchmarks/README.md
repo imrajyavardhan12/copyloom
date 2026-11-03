@@ -61,3 +61,71 @@ sorts over the adversarial 20-word-vocab corpus miss and stay open as a
 product decision. Two fixes landed from the numbers: app-filter ID
 pre-resolution (87 ms → 0.56 ms) and pinned timeline-index walks for
 non-FTS pages (50 ms → 0.5 ms).
+
+## Archive export/import
+
+`copyloom-archive-bench` is separate from the search runner: that runner holds
+its input fixtures in memory and later expires part of the library. Neither
+is appropriate when measuring archive phase RSS or claiming 100k live clips.
+
+After generating the standard corpus above:
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+xcrun swift build --package-path Packages/CopyloomKit \
+  --scratch-path .build/SwiftPM -c release --product copyloom-archive-bench
+BIN_DIR="$(xcrun swift build --package-path Packages/CopyloomKit \
+  --scratch-path .build/SwiftPM -c release --show-bin-path)"
+"$BIN_DIR/copyloom-archive-bench" \
+  --corpus Benchmarks/Results/corpus-100k.jsonl --records 100000 \
+  --workdir Benchmarks/Results/archive-100k-run1 \
+  --commit "$(git describe --always --dirty)"
+```
+
+The parent of `--workdir` must exist, but the directory itself must **not**.
+The command refuses reuse rather than deleting files. It writes `report.json`
+inside the work directory and prints only a fixed success/failure line with
+counts or reason codes. Failed runs leave their synthetic artifacts for
+inspection; use a new directory for the next run. Never use private history.
+
+Setup, export, verify, verify+plan, verify+apply, correctness re-export,
+verify+re-import and final re-export run in separate processes. Setup and
+correctness work do not inflate phase timings or peak RSS. Plan and apply
+each verify independently, as the app does. A report is published only after
+live counts, all logical archive-file digests, FTS integrity and re-import
+convergence pass. No retention cleanup or background OCR worker is started.
+
+The input has 125 exact duplicate texts at 100k. An archive-only, versioned
+uniqueness suffix ensures **100k live clips** while leaving the shared search
+corpus unchanged. The report identifies the original corpus hash, suffix,
+text/image counts, base commit, build/toolchain/hardware/OS/SQLite, phase
+process/group IDs, wall/CPU times, peak RSS, archive size and DB/WAL sizes.
+Workers and version probes explicitly inherit the orchestrator's process group;
+CLI checks launch an owned session and terminate that entire group on timeout
+or handled SIGINT/SIGTERM, with a fixed diagnostic and reaping before artifact
+cleanup (SIGKILL cannot be handled). Runtime-selected
+tool versions are not embedded compiler provenance. Use three
+or more sequential Release runs and report median/range; do not call three
+samples P95. Do not run builds/tests concurrently with measurements.
+
+For a separate small image profile (real Vision, not a fake gate):
+
+```bash
+head -n 100 Benchmarks/Results/corpus-100k.jsonl > Benchmarks/Results/corpus-100-archive.jsonl
+"$BIN_DIR/copyloom-archive-bench" \
+  --corpus Benchmarks/Results/corpus-100-archive.jsonl --records 100 --images 12 \
+  --workdir Benchmarks/Results/archive-images-run1 \
+  --commit "$(git describe --always --dirty)"
+```
+
+Images are generated 1024×768 cards, not screenshots; a refused image aborts
+rather than bypassing privacy screening. The phase protocol (`--phase verify`
+with an existing marked work directory) also permits isolated verification
+probes without decoding or importing clip records.
+
+The CLI smoke/resource tests use only temporary synthetic files and run in
+`./scripts/ci.sh` via Python 3. They are correctness checks, not performance
+baselines. Measurements, the read-buffer memory fix and the cancellation-safe
+launcher's 100k follow-up are recorded in
+[`docs/validation/m3-archive-benchmarks.md`](../docs/validation/m3-archive-benchmarks.md).
+Owner sandbox/Finder acceptance remains separate.

@@ -79,7 +79,7 @@ Slice order and decisions: [ADR 0005](docs/decisions/0005-library.md).
 - [x] collections, tags and saved-query Smart Collections (slice 3)
 - [x] transform protocol/registry and initial JSON/text/URL/Base64/color actions (slice 5; file-path actions deferred, nothing in M3 produces a use case for them yet)
 - [x] code preview: plain monospace shipped; syntax highlighting deferred by decision, no dependency (see [ADR 0006](docs/decisions/0006-syntax-highlighting.md))
-- [x] import/export archive v1 with manifest and integrity verification (slice 6; design accepted in [`docs/archive-format.md`](docs/archive-format.md). 6a format core, 6b export and 6c import done; owner click-through evidence pending)
+- [x] import/export archive v1 with manifest and integrity verification (slice 6; design accepted in [`docs/archive-format.md`](docs/archive-format.md). 6a format core, 6b export and 6c import done; [100k scale measured](docs/validation/m3-archive-benchmarks.md); owner click-through evidence pending)
 
 **Not included:** semantic search, sync, Vault, MCP, text expansion.
 

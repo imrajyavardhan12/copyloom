@@ -216,4 +216,10 @@ Choices the design left open, and where the implementation is stricter than the 
 - **Retention warning** is computed on the state after merge: for each clip, last-seen and protection as the library will hold them, against the cutoff derived from Settings. The confirmation defaults to Cancel when it is non-zero.
 - **Failure and cancellation.** Cancelling between records or batches leaves a valid partial import; re-running completes it. A sink failure stops the import. An attachment or clips file that changed after verification aborts with a fixed message that says earlier batches were kept.
 
-Not measured yet: import throughput and peak memory at 100k clips (tracked under Scale above).
+100k scale measured (2026-10-31): export 24.689 s, verify + plan 16.951 s,
+verify + apply 29.507 s median; phase peak RSS at most 36.33 MiB across three
+text runs after fixing autoreleased scan-buffer retention. Re-import adds
+nothing and logical archive files remain identical. See
+[the full benchmark evidence](validation/m3-archive-benchmarks.md) for the
+fixture, environment, memory regression and separate real-Vision profile.
+Owner sandbox/Finder click-through evidence remains pending.

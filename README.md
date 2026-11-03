@@ -5,7 +5,7 @@
 Copyloom is an open-source, native macOS clipboard workspace built to become a private local memory layer—not another disposable clipboard-history list.
 
 > [!IMPORTANT]
-> Copyloom is in early development (M2 complete, M3 in progress). Privacy-gated text, link, file-reference and image capture, native Quick Paste, previous-application automatic paste, a full Library window with collections/tags/Smart Collections, and searchable image OCR now work. Import/export, signed releases and Vault are not implemented yet. See [ROADMAP.md](ROADMAP.md).
+> Copyloom is in early development (M2 complete, M3 in progress). Privacy-gated text, link, file-reference and image capture, native Quick Paste, previous-application automatic paste, a full Library window with collections/tags/Smart Collections, and searchable image OCR now work. Import/export archive v1 and a session-only Paste Queue are implemented; their real-app validation, along with OCR, remains pending. Signed public releases and Vault are not implemented yet. See [ROADMAP.md](ROADMAP.md).
 
 ## Principles
 
@@ -36,6 +36,8 @@ Copyloom is an open-source, native macOS clipboard workspace built to become a p
 - collections, tags and saved-query Smart Collections, with drag into collections;
 - background OCR making images searchable (`has:ocr`), with sensitive text withheld from the index;
 - Library transforms: JSON, case/whitespace, URL, Base64 and color conversions with preview, copy, and a privacy-gated save as a new clip;
+- verified-format library export/import with current privacy gates and idempotent merge;
+- session-only Paste Queue: add with `⇧↵`, then use `⌃⌥V` to paste the next clip;
 - Apache-2.0 project license.
 
 See [ROADMAP.md](ROADMAP.md) for what is and is not implemented.
@@ -43,7 +45,8 @@ See [ROADMAP.md](ROADMAP.md) for what is and is not implemented.
 ## Requirements
 
 - macOS 14 or later;
-- Xcode 16.3 or later (currently tested with Xcode 26.6);
+- Xcode 16.3 or later (currently tested locally with Xcode 27.0);
+- Python 3 for the benchmark CLI checks in `scripts/ci.sh` (not an app runtime dependency);
 - no paid Apple Developer membership for local development.
 
 ## Build and test
