@@ -92,7 +92,8 @@ struct CopyloomApp: App {
       }
       .keyboardShortcut("q")
     } label: {
-      Image(systemName: "clipboard")
+      Image("MenuBarMark")
+        .renderingMode(.template)
         .accessibilityLabel("Copyloom")
     }
     .menuBarExtraStyle(.menu)

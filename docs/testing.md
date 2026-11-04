@@ -128,10 +128,16 @@ Preview mode:
 - never starts clipboard capture or retention cleanup;
 - runs a real export, then a real import of that export into a throwaway database through the production wiring (including the Vision image gate), twice, and offers it a hostile archive carrying the planted fake credential. Expect on stderr: `import first: added=N present=0`, `import second: added=0 present=N (idempotent=true)`, and `import hostile: added=0 refused=1 credentialStored=false`;
 - renders the Library (list, cards, transform preview, image, colors, empty state), Quick Paste and Settings in light and dark, then quits;
+- renders `branding-{light,dark}.png` from the compiled app bundle at 128/64/32/16 pt, plus the 18 pt monochrome menu mark. Expect `preview check brand-assets-light: passed=true` and the dark equivalent; missing app artwork or a missing/non-template menu asset fails preview;
 - also renders `library-ocr-{pending,withheld,indexed}-{light,dark}` from a throwaway synthetic store without a background OCR worker, so each inspector state is stable;
 - after the pending snapshot, coalesces hide/reopen on the real inspector and completes its job; expect `preview check ocr-coalesced-reopen-light: passed=true` and the dark equivalent. A failed hosted check exits nonzero. No test manually starts its replacement observer;
 - renders `library-color-{rgb,hsl,cards}-{light,dark}` and `quickpaste-colors-{light,dark}` from a separate synthetic store, including HEX and alpha variants. `ownerCheck=pending` accessibility lines are not passes; VoiceOver/Accessibility Inspector must verify the `clip.color.swatch` labels;
 - renders in-process (`NSHostingView` + `cacheDisplay`), so it needs no Screen Recording permission. PNGs land in the sandbox container's temporary directory (`~/Library/Containers/io.github.imrajyavardhan12.copyloom/Data/tmp/`) and the path is printed to stderr.
+
+The checked-in icon catalogue is `App/Resources/Assets.xcassets`. Regenerate
+Paper weave PNGs and its vector menu template with
+`xcrun swift scripts/generate-app-icons.swift` from the repository root. This
+uses Apple frameworks only and does not run capture or touch history.
 
 Known limits of in-process rendering: sidebar vibrancy, window chrome and toolbars are not drawn, and prominent buttons appear gray because the window is never key. Judge sidebar/toolbar changes in the real app. The code is `#if DEBUG` and absent from release builds.
 

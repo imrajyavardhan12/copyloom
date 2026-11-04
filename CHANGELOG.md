@@ -58,4 +58,6 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 
 - RGB/RGBA and HSL/HSLA clips now show swatches in Quick Paste and Library rows, cards and inspector previews, preserving opacity. Color cards have explicit accessibility labels (owner VoiceOver verification pending); invalid Unicode hex is rejected rather than rendered black/transparent. Capture classification and persisted content are unchanged. Evidence: `docs/validation/m3-colors.md`.
 
+- Original Paper weave app icon with complete macOS 1×/2× sizes and a matching vector menu-bar mark that adapts to light/dark appearances. The menu item's accessibility name remains Copyloom; clipboard and paste behavior are unchanged.
+
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main

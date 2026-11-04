@@ -61,4 +61,4 @@ if (( ${#launched_pids[@]} != 1 )); then
     exit 1
 fi
 
-printf 'Opened %s\nLook for the clipboard icon in the menu bar (accessibility label: Copyloom).\n' "$APP"
+printf 'Opened %s\nLook for the Copyloom weave icon in the menu bar (accessibility label: Copyloom).\n' "$APP"

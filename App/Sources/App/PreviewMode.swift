@@ -205,6 +205,7 @@
       into directory: URL
     ) async {
       let appearance = NSAppearance(named: scheme == "dark" ? .darkAqua : .aqua)
+      await renderBrandAssets(scheme: scheme, appearance: appearance, into: directory)
       libraryModel.setInspectorPresented(true)
       defer { libraryModel.setInspectorPresented(false) }
 
@@ -292,6 +293,49 @@
       await render(
         SettingsView(model: model), size: CGSize(width: 520, height: 520),
         name: "settings-\(scheme)", appearance: appearance, in: directory)
+    }
+
+    /// Inspect the compiled bundle, not generator output: a missing catalog or
+    /// non-template menu asset must fail preview rather than ship a blank mark.
+    private static func renderBrandAssets(
+      scheme: String, appearance: NSAppearance?, into directory: URL
+    ) async {
+      guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+        let appIcon = NSImage(contentsOf: iconURL),
+        let menuMark = NSImage(named: "MenuBarMark"), menuMark.isTemplate,
+        menuMark.size == NSSize(width: 18, height: 18)
+      else {
+        PreviewMode.check("brand-assets-\(scheme)", passed: false)
+        return
+      }
+      PreviewMode.check("brand-assets-\(scheme)", passed: true)
+      let view = VStack(alignment: .leading, spacing: 24) {
+        Text("Copyloom").font(.title2.weight(.semibold))
+        HStack(alignment: .bottom, spacing: 28) {
+          ForEach([128, 64, 32, 16], id: \.self) { size in
+            VStack(spacing: 10) {
+              Image(nsImage: appIcon)
+                .resizable()
+                .frame(width: CGFloat(size), height: CGFloat(size))
+              Text("\(size) pt").font(.caption).foregroundStyle(.secondary)
+            }
+          }
+        }
+        HStack(spacing: 12) {
+          Image(nsImage: menuMark).renderingMode(.template)
+            .foregroundStyle(.primary)
+            .frame(width: 18, height: 18)
+          Text("Menu bar · 18 pt").font(.callout)
+        }
+        Text("Paper weave · ink blue, paper white and soft mint")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+      .padding(32)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .background(Color(nsColor: .windowBackgroundColor))
+      await render(
+        view, size: CGSize(width: 640, height: 380), name: "branding-\(scheme)",
+        appearance: appearance, in: directory)
     }
 
     /// Stable OCR presentation states in a throwaway store. The app's real
