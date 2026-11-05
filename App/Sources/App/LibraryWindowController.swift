@@ -64,7 +64,7 @@ final class LibraryWindowController: NSObject, NSWindowDelegate {
     if let window { return window }
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1120, height: 720),
-      styleMask: [.titled, .closable, .miniaturizable, .resizable],
+      styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
       backing: .buffered,
       defer: false
     )

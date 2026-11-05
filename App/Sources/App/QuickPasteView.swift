@@ -10,6 +10,8 @@ struct QuickPasteView: View {
   @FocusState private var searchFocused: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+  static let cornerRadius: CGFloat = 24
+
   var body: some View {
     VStack(spacing: 0) {
       searchHeader
@@ -19,12 +21,7 @@ struct QuickPasteView: View {
       footer
     }
     .frame(width: 680, height: 460)
-    .background(.ultraThickMaterial)
-    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    .overlay {
-      RoundedRectangle(cornerRadius: 16, style: .continuous)
-        .strokeBorder(.separator.opacity(0.7), lineWidth: 1)
-    }
+    .glassSurface(cornerRadius: Self.cornerRadius)
     .onAppear {
       searchFocused = true
       Task { await model.loadRecent() }
@@ -46,7 +43,7 @@ struct QuickPasteView: View {
     HStack(spacing: 12) {
       Image(systemName: "magnifyingglass")
         .font(.system(size: 15, weight: .regular))
-        .foregroundStyle(.tertiary)
+        .foregroundStyle(.secondary)
       TextField("Search copied text, links, or app:Safari", text: $query)
         .textFieldStyle(.plain)
         .font(.system(size: 18, weight: .regular))
@@ -147,7 +144,6 @@ struct QuickPasteView: View {
         Text("⌘F Favorite")
         Text("⌥⌫ Delete")
       }
-      .foregroundStyle(.tertiary)
     }
     .font(.system(size: 11.5))
     .foregroundStyle(.secondary)
@@ -208,7 +204,7 @@ private struct QuickPasteRow: View {
       if index < 9 {
         Text("⌘\(index + 1)")
           .font(.system(size: 11.5).monospacedDigit())
-          .foregroundStyle(isSelected ? Color.secondary : Color.secondary.opacity(0.55))
+          .foregroundStyle(.secondary)
       }
     }
     .padding(.horizontal, 12)

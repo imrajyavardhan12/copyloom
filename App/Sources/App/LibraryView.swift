@@ -71,8 +71,6 @@ struct LibraryView: View {
       }
     } content: {
       VStack(spacing: 0) {
-        searchHeader
-        Divider()
         contentList
       }
       .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 560)
@@ -98,6 +96,10 @@ struct LibraryView: View {
             Button("Cancel Export") { model.cancelExport() }
           }
         }
+        if model.isLoading {
+          ProgressView()
+            .controlSize(.small)
+        }
         importProgress
         Menu {
           Button("Export Library…") { LibraryExportFlow.start(model: model) }
@@ -116,6 +118,9 @@ struct LibraryView: View {
     } detail: {
       InspectorView(model: model)
     }
+    // Search lives in the toolbar: on macOS 26 the toolbar's scroll-edge blur covers a custom
+    // header at the top of the column and leaves the field a smudge.
+    .searchable(text: $query, placement: .toolbar, prompt: "Search clips")
     .task {
       await model.refresh()
       await model.refreshCollections()
@@ -263,36 +268,6 @@ struct LibraryView: View {
       set: { model.select(id: $0) }
     )
   }
-
-  private var searchHeader: some View {
-    HStack(spacing: 12) {
-      Image(systemName: "magnifyingglass")
-        .font(.system(size: 13, weight: .regular))
-        .foregroundStyle(.tertiary)
-      TextField("Search clips", text: $query)
-        .textFieldStyle(.plain)
-        .font(.system(size: 15))
-        .focused($searchFocused)
-        .accessibilityLabel("Search clips")
-      if model.isLoading {
-        ProgressView()
-          .controlSize(.small)
-      } else if !query.isEmpty {
-        Button {
-          query = ""
-        } label: {
-          Image(systemName: "xmark.circle.fill")
-            .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Clear search")
-      }
-    }
-    .padding(.horizontal, 16)
-    .frame(height: 48)
-  }
-
-  @FocusState private var searchFocused: Bool
 
   @ViewBuilder
   private var contentList: some View {

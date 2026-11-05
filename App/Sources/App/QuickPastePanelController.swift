@@ -49,13 +49,17 @@ final class QuickPastePanelController {
     panel.isReleasedWhenClosed = false
     panel.isOpaque = false
     panel.backgroundColor = .clear
-    panel.hasShadow = true
+    // Liquid Glass draws its own depth; the window shadow would add a rectangular outline.
+    panel.hasShadow = false
     panel.level = .floating
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
     panel.animationBehavior = .utilityWindow
     panel.standardWindowButton(.closeButton)?.isHidden = true
     panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
     panel.standardWindowButton(.zoomButton)?.isHidden = true
+    // Titled, full-size-content windows add the titlebar height to the frame. The glass is exactly
+    // the 680×460 view, so the frame must match or an invisible strip sits above it.
+    panel.setFrame(NSRect(x: 0, y: 0, width: 680, height: 460), display: false)
     panel.onKeyEvent = { [weak self] event in
       self?.handleKeyEvent(event) ?? false
     }
@@ -76,7 +80,10 @@ final class QuickPastePanelController {
   func show(targetApplication: NSRunningApplication?) {
     let start = CFAbsoluteTimeGetCurrent()
     pasteCoordinator.prepare(targetApplication: targetApplication)
-    panel.contentView = NSHostingView(rootView: QuickPasteView(model: model))
+    let hosting = NSHostingView(rootView: QuickPasteView(model: model))
+    // The hidden titlebar would otherwise inset the content and push the footer out of the glass.
+    hosting.safeAreaRegions = []
+    panel.contentView = hosting
     positionOnActiveScreen()
     panel.orderFrontRegardless()
     panel.makeKey()

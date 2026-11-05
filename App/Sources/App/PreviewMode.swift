@@ -23,7 +23,22 @@
   @MainActor
   enum PreviewMode {
     static var isEnabled: Bool {
-      ProcessInfo.processInfo.environment["COPYLOOM_PREVIEW"] == "1"
+      ["1", "live"].contains(ProcessInfo.processInfo.environment["COPYLOOM_PREVIEW"])
+    }
+
+    /// `COPYLOOM_PREVIEW=live` seeds the synthetic store and keeps running, so the real windows
+    /// (⌃⌘V, ⌃⌘L) can be inspected on fake data. `COPYLOOM_APPEARANCE=light|dark` pins the theme
+    /// without touching system settings.
+    static var isLive: Bool {
+      ProcessInfo.processInfo.environment["COPYLOOM_PREVIEW"] == "live"
+    }
+
+    static func applyAppearanceOverride() {
+      switch ProcessInfo.processInfo.environment["COPYLOOM_APPEARANCE"] {
+      case "light": NSApp.appearance = NSAppearance(named: .aqua)
+      case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+      default: break
+      }
     }
 
     private static var failedHostChecks = 0
@@ -38,6 +53,11 @@
         do {
           if try await repository.count() == 0 {
             try await PreviewFixtures.seed(into: repository)
+          }
+          applyAppearanceOverride()
+          if isLive {
+            log("preview live: ready")
+            return
           }
           // Give the background OCR queue a moment to index seeded images.
           try? await Task.sleep(for: .seconds(8))
@@ -271,7 +291,8 @@
       let quickPaste = QuickPasteModel(repository: repository, delivery: PreviewDelivery())
       await quickPaste.loadRecent()
       await render(
-        QuickPasteView(model: quickPaste), size: CGSize(width: 680, height: 460),
+        QuickPasteView(model: quickPaste).background(PreviewGlassStandIn()),
+        size: CGSize(width: 680, height: 460),
         name: "quickpaste-\(scheme)", appearance: appearance, paintsBackground: false,
         in: directory)
 
@@ -285,7 +306,8 @@
       queuedPaste.moveSelection(by: 1)
       queuedPaste.addSelectedToQueue()
       await render(
-        QuickPasteView(model: queuedPaste), size: CGSize(width: 680, height: 460),
+        QuickPasteView(model: queuedPaste).background(PreviewGlassStandIn()),
+        size: CGSize(width: 680, height: 460),
         name: "quickpaste-queue-\(scheme)", appearance: appearance, paintsBackground: false,
         in: directory)
 
@@ -447,7 +469,8 @@
         let quickPaste = QuickPasteModel(
           repository: database.repository, delivery: PreviewDelivery())
         await render(
-          QuickPasteView(model: quickPaste), size: CGSize(width: 680, height: 460),
+          QuickPasteView(model: quickPaste).background(PreviewGlassStandIn()),
+          size: CGSize(width: 680, height: 460),
           name: "quickpaste-colors-\(scheme)", appearance: appearance,
           paintsBackground: false, in: directory)
       } catch {
@@ -473,6 +496,7 @@
       in directory: URL
     ) async {
       let framed = view.frame(width: size.width, height: size.height)
+        .environment(\.usesGlassSurface, false)
       let host = NSHostingView(
         rootView: framed.background(
           paintsBackground ? Color(nsColor: .windowBackgroundColor) : Color.clear))
@@ -510,6 +534,21 @@
         PreviewMode.check("snapshot-\(name)", passed: false)
       }
       await afterSnapshot?()
+    }
+  }
+
+  /// Offscreen snapshots cannot sample what is behind a window, so the real glass never renders
+  /// here. This stands in with a wallpaper-like gradient under a material, only to show how the
+  /// content reads on a translucent surface. The live look is checked in the running app.
+  private struct PreviewGlassStandIn: View {
+    var body: some View {
+      ZStack {
+        LinearGradient(
+          colors: [.blue.opacity(0.55), .purple.opacity(0.45), .orange.opacity(0.4)],
+          startPoint: .topLeading, endPoint: .bottomTrailing)
+        Rectangle().fill(.regularMaterial)
+      }
+      .clipShape(RoundedRectangle(cornerRadius: QuickPasteView.cornerRadius, style: .continuous))
     }
   }
 
