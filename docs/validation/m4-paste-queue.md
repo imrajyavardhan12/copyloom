@@ -23,8 +23,10 @@ app can only be observed in the signed app._
 
 ## Live check (owner)
 
-Rebuild invalidates the ad-hoc signature: re-grant Accessibility for the new
-binary first (path in Settings → Permissions).
+Use the installed copy (`scripts/install.sh`, ADR 0008): its signature is
+stable, so Accessibility is granted once. In a Debug build, each rebuild
+invalidates the ad-hoc signature: re-grant Accessibility for the new binary
+first (path in Settings → Permissions).
 
 | # | Do | Expect |
 | --- | --- | --- |

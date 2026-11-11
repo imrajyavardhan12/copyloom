@@ -30,8 +30,11 @@ alerts as a person reads them.
 
 ## Setup
 
-1. Build and run the signed Debug app (rebuilding invalidates the ad-hoc
-   signature, so re-grant Accessibility if you want Quick Paste to paste).
+1. Use the installed copy (`scripts/install.sh`, ADR 0008) for sections A
+   and B, which need a real library. A Debug build (`scripts/run.sh`) has a
+   library of its own that starts empty, and rebuilding it invalidates the
+   ad-hoc signature, so re-grant Accessibility there if you want Quick Paste
+   to paste.
 2. Have a real library with: at least one pinned clip, one favorite, a tag,
    a collection, an image clip, and (if you can) a Smart Collection.
 3. Make an empty destination folder, for example `~/Desktop/export-test`.
@@ -63,11 +66,12 @@ sentence of what you saw.
 
 ## C. Import into a clean library (round trip)
 
-Use a second macOS user account, or temporarily move the database aside
-(quit Copyloom, rename the `Copyloom` folder inside
-`~/Library/Containers/io.github.imrajyavardhan12.copyloom/Data/Library/Application Support/`,
-relaunch, and **restore it afterwards**). Do not do this on your only copy of
-the library without a backup.
+Use a Debug build (`scripts/run.sh`): its library is separate from the
+installed copy's and starts empty (ADR 0008), so nothing has to be moved
+aside. To empty it again, quit Copyloom Debug and rename the `Copyloom` folder
+inside
+`~/Library/Containers/io.github.imrajyavardhan12.copyloom.debug/Data/Library/Application Support/`.
+Do not move the installed copy's library aside for this.
 
 | # | Do | Expect |
 | --- | --- | --- |

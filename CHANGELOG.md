@@ -6,6 +6,7 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 
 ### Added
 
+- Debug builds are "Copyloom Debug" with their own bundle ID, container and history, and `scripts/install.sh` installs the last commit as the daily copy in `~/Applications`, signed with the keychain's Apple Development identity so the Accessibility grant survives rebuilds (ADR 0008).
 - Library search moved into the window toolbar (`searchable`) and the Library window now uses full-size content, the macOS 26 layout. On macOS 26 the old in-column search header was blurred out by the toolbar's scroll-edge effect and the field was effectively invisible.
 - Apple's Liquid Glass (`glassEffect`, `regular` variant) on the Quick Paste panel on macOS 26+, with the previous system material on earlier systems and on toolchains without the macOS 26 SDK. The Library keeps the standard system components, whose sidebar and toolbar adopt Liquid Glass automatically. Shortcut and footer hints use the secondary text style. Owner-checked live; offscreen preview cannot sample what is behind a window.
 - Phase 0 product, architecture, database, permission and threat-model research.

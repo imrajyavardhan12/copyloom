@@ -9,8 +9,13 @@ Decisions are ADRs in `docs/decisions/`.
 
 - `./scripts/ci.sh`: strict swift-format lint, CopyloomKit tests, unsigned app build (~15 s incremental)
 - `./scripts/format.sh`: fix formatting
-- `./scripts/run.sh`: build the signed Debug app and relaunch a single instance; `./scripts/check-menu-bar.sh`
-  then checks its menu-bar item
+- `./scripts/run.sh`: build the signed Debug app ("Copyloom Debug", its own bundle ID and history, ADR 0008) and
+  relaunch a single instance, quitting the installed copy first; `./scripts/check-menu-bar.sh` then checks its
+  menu-bar item
+- `./scripts/install.sh`: lint, test and build the last commit (Release) into `~/Applications/Copyloom.app`, the copy
+  used every day, signed with the keychain's Apple Development identity so Accessibility survives rebuilds, and
+  relaunch it. It backs up the data folder before the first signed start. Uncommitted changes are left out: install
+  after committing, when asked
 
 ## Verify before you say done
 
@@ -18,7 +23,7 @@ Decisions are ADRs in `docs/decisions/`.
 - Behaviour work is red–green at a public seam: add one failing test, watch it fail, then implement. Tests use
   only the seams in `docs/testing.md`; never private functions, GRDB records or call counts.
 - UI: render it instead of guessing. Build the signed Debug app as `docs/testing.md` § Visual preview shows, then
-  run `COPYLOOM_PREVIEW=1 .build/RunDerivedData/Build/Products/Debug/Copyloom.app/Contents/MacOS/Copyloom`. It
+  run `COPYLOOM_PREVIEW=1 .build/RunDerivedData/Build/Products/Debug/CopyloomDebug.app/Contents/MacOS/CopyloomDebug`. It
   renders the Library, Quick Paste and Settings in light and dark from synthetic clips, prints the PNG folder,
   and runs export/import round trips whose expected stderr lines are in `docs/testing.md`. Look at the PNGs.
 - Hot paths (capture, search, OCR, import): bring numbers from `Benchmarks/`; see `docs/validation/`.

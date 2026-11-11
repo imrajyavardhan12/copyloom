@@ -57,7 +57,7 @@ cd copyloom
 ./scripts/ci.sh
 ```
 
-Run the locally ad-hoc-signed menu-bar app:
+Run the locally ad-hoc-signed Debug build, "Copyloom Debug". It has its own bundle ID and history, so it never touches an installed copy's ([ADR 0008](docs/decisions/0008-debug-identity-and-daily-install.md)):
 
 ```bash
 ./scripts/run.sh
@@ -67,9 +67,11 @@ The menu bar uses a compact clipboard icon with the accessibility label **Copylo
 
 If the item is still missing, rerun `./scripts/run.sh`. Maintainers with Accessibility access for Terminal can run `./scripts/check-menu-bar.sh` for a direct status-item diagnostic.
 
-After capturing synthetic text, press `⌃⌘V`, type a query, and use ↑/↓. Enter pastes into the retained previous app when Accessibility is granted; ⌘Enter always copies only. Before testing Enter, choose **Enable Automatic Paste…** from the Copyloom menu and enable Copyloom in **System Settings → Privacy & Security → Accessibility**.
+After capturing synthetic text, press `⌃⌘V`, type a query, and use ↑/↓. Enter pastes into the retained previous app when Accessibility is granted; ⌘Enter always copies only. Before testing Enter, choose **Enable Automatic Paste…** from the Copyloom menu and enable **Copyloom Debug**, the Debug build's name there, in **System Settings → Privacy & Security → Accessibility**.
 
-Development builds are ad-hoc signed, so macOS may require Accessibility to be enabled again after rebuilding the app. Copy-only behavior remains available without it.
+Debug builds are ad-hoc signed, so macOS may require Accessibility to be enabled again after rebuilding the app. Copy-only behavior remains available without it.
+
+To use Copyloom every day while developing it, `./scripts/install.sh` checks and builds the last commit and installs it as `~/Applications/Copyloom.app`. With one Apple Development identity in the keychain (free, no paid membership) the copy keeps the same signature across installs, so the Accessibility grant survives them; otherwise it is ad-hoc signed.
 
 Text clips are captured as plain text only, so a separate plain-paste shortcut would have no visible effect. It will be exposed when rich-text/HTML/RTF representations are implemented.
 

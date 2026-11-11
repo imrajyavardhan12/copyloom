@@ -144,11 +144,12 @@ Untrusted apps/users ─▶ global NSPasteboard ─▶ capture policy ─▶ in-
 - no sensitive match detail in rows;
 - normal history and Vault use separate security/index domains;
 - short transactions, controlled backups, no ad-hoc DB copies;
+- the one copy made outside the container is the maintainer's backup before the first team-signed install (ADR 0008): kept in `~/Library/Application Support/Copyloom Backups/`, never made again once the installed copy is team-signed, and named after every install until it is deleted;
 - crash/diagnostic logging redacts SQL arguments, query text and snippets;
 - disable SQL tracing in release builds;
 - make support bundles opt-in and metadata-only by default.
 
-**Residual risk:** accepted normal-history text exists in SQLite, FTS and WAL. FileVault/user-account security is the v1 protection.
+**Residual risk:** accepted normal-history text exists in SQLite, FTS and WAL. FileVault/user-account security is the v1 protection. Until the maintainer deletes it, the pre-signing backup is readable by any program of the same user, which the team-signed copy's container is not.
 
 ### T7 — Attachment path traversal, substitution or orphan leaks
 

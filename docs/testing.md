@@ -117,10 +117,10 @@ xcodebuild -quiet -workspace Copyloom.xcworkspace -scheme Copyloom -configuratio
   -destination "platform=macOS,arch=$(uname -m)" -derivedDataPath .build/RunDerivedData \
   -clonedSourcePackagesDirPath .build/SourcePackages -onlyUsePackageVersionsFromResolvedFile build
 
-COPYLOOM_PREVIEW=1 .build/RunDerivedData/Build/Products/Debug/Copyloom.app/Contents/MacOS/Copyloom
+COPYLOOM_PREVIEW=1 .build/RunDerivedData/Build/Products/Debug/CopyloomDebug.app/Contents/MacOS/CopyloomDebug
 ```
 
-The app must be signed (the sandbox needs its entitlements), so the unsigned `scripts/ci.sh` build cannot be used for this.
+The app must be signed (the sandbox needs its entitlements), so the unsigned `scripts/ci.sh` build cannot be used for this. It is the Debug build (`io.github.imrajyavardhan12.copyloom.debug`), so it runs beside the installed copy and never sees its history (ADR 0008).
 
 Preview mode:
 
@@ -133,7 +133,7 @@ Preview mode:
 - also renders `library-ocr-{pending,withheld,indexed}-{light,dark}` from a throwaway synthetic store without a background OCR worker, so each inspector state is stable;
 - after the pending snapshot, coalesces hide/reopen on the real inspector and completes its job; expect `preview check ocr-coalesced-reopen-light: passed=true` and the dark equivalent. A failed hosted check exits nonzero. No test manually starts its replacement observer;
 - renders `library-color-{rgb,hsl,cards}-{light,dark}` and `quickpaste-colors-{light,dark}` from a separate synthetic store, including HEX and alpha variants. `ownerCheck=pending` accessibility lines are not passes; VoiceOver/Accessibility Inspector must verify the `clip.color.swatch` labels;
-- renders in-process (`NSHostingView` + `cacheDisplay`), so it needs no Screen Recording permission. PNGs land in the sandbox container's temporary directory (`~/Library/Containers/io.github.imrajyavardhan12.copyloom/Data/tmp/`) and the path is printed to stderr.
+- renders in-process (`NSHostingView` + `cacheDisplay`), so it needs no Screen Recording permission. PNGs land in the sandbox container's temporary directory (`~/Library/Containers/io.github.imrajyavardhan12.copyloom.debug/Data/tmp/`) and the path is printed to stderr.
 
 The checked-in icon catalogue is `App/Resources/Assets.xcassets`. Regenerate
 Paper weave PNGs and its vector menu template with

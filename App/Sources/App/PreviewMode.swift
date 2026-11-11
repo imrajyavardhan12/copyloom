@@ -16,7 +16,7 @@
   /// real database, never starts clipboard capture, and does not exist in
   /// release builds.
   ///
-  ///     COPYLOOM_PREVIEW=1 Copyloom.app/Contents/MacOS/Copyloom
+  ///     COPYLOOM_PREVIEW=1 CopyloomDebug.app/Contents/MacOS/CopyloomDebug
   ///
   /// PNGs land in the sandbox container's temporary directory; the path is
   /// printed to stderr.
