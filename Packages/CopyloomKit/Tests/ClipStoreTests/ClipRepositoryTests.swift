@@ -47,6 +47,25 @@ struct ClipRepositoryTests {
     #expect(results.first?.createdAt == capturedAt)
   }
 
+  @Test("text containing a NUL character is stored and read back whole")
+  func keepsTextPastNulCharacter() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try AppDatabase.open(at: directory.appending(path: "copyloom.sqlite"))
+    defer { try? database.close() }
+    let clipID = UUID()
+    let text = "synthetic before\u{0}synthetic after"
+    _ = try await database.repository.saveAcceptedText(
+      AcceptedTextClip(id: clipID, text: text, capturedAt: Date())
+    )
+
+    let stored = try await database.repository.clip(id: clipID)
+    #expect(stored?.text == text)
+  }
+
   @Test("aggregates source applications and exposes latest provenance after deduplication")
   func storesSourceProvenance() async throws {
     let directory = FileManager.default.temporaryDirectory

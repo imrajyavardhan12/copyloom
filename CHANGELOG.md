@@ -63,4 +63,8 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 
 - Original Paper weave app icon with complete macOS 1×/2× sizes and a matching vector menu-bar mark that adapts to light/dark appearances. The menu item's accessibility name remains Copyloom; clipboard and paste behavior are unchanged.
 
+### Fixed
+
+- Text containing a NUL character is stored and pasted back whole. GRDB 7.11.1 cut bound text at the first NUL, so such a clip kept only what came before it; GRDB is now 7.12.0 in the package and the app workspace. Clips captured before this keep their cut text.
+
 [Unreleased]: https://github.com/imrajyavardhan12/copyloom/commits/main
