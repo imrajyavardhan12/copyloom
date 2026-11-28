@@ -202,9 +202,12 @@ Output is a typed AST. Unknown filters produce a visible diagnostic and are trea
 
 ### Execution
 
-- free terms/phrases become safely constructed FTS5 patterns;
+- free terms/phrases become safely constructed FTS5 patterns: the typed text is always one quoted FTS5 string, so operators stay text;
+- a free term's last word matches the words it begins, so results follow typing (`kube` finds "kubernetes"). Two exceptions: a term ending in punctuation is finished (`c++` is the word "c"), and a last word of one letter or digit matches only that whole word, because no prefix index serves it and it begins most words. A term also matches as a whole word, a bm25 boost for clips containing exactly that word. A quoted phrase matches whole words only. A word of punctuation only is ignored beside other words, and text of nothing else matches nothing;
 - metadata becomes indexed SQL predicates/joins;
-- ranking begins with weighted BM25 and uses recency/use count only as deterministic tie-breakers;
+- a search is ranked when at most `AppDatabase.defaultRelevanceRankingLimit` (5,000) clips match its text, which a capped count finds; filters are not counted. Ranked order is `bm25` over all FTS columns, unweighted, then last seen and ID as deterministic tie-breakers. Pinning does not affect it;
+- any other search lists its matches like the history, pinned first and then newest first. Ranking sorts the whole match set: for the short words every search starts with it measured 95–130 ms at 100k clips, against about 10 ms for the filtered history page, and relevance among that many matches says little (`docs/validation/m2-benchmarks.md`);
+- a CJK run is one `unicode61` token, so a search for part of a CJK word finds it only from the run's start; one CJK character is exempt from the one-letter rule and finds the runs it begins;
 - results are projections (`ClipSummary`), not loaded attachment graphs;
 - searches are cancellable; stale result sets never replace newer queries;
 - filter-only queries use ordinary indexes without invoking FTS.
@@ -217,7 +220,7 @@ Optional regex is later and explicit. It must run through a bounded/cancellable 
 - construct the panel once and keep it hidden;
 - fetch recent summaries lazily in pages;
 - load thumbnails on demand through an `NSCache` with memory pressure handling;
-- benchmark before adding prefix indexes, custom tokenizers or result caches;
+- benchmark before adding prefix indexes, custom tokenizers or result caches (the `prefix='2 3 4'` indexes serve as-you-type prefix terms, measured 2026-11-28);
 - meet the stated `<30 ms` warm normal-query target at P95 on a documented 100k corpus/hardware profile.
 
 ## Quick Paste windowing and paste delivery

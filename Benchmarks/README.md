@@ -62,6 +62,10 @@ product decision. Two fixes landed from the numbers: app-filter ID
 pre-resolution (87 ms → 0.56 ms) and pinned timeline-index walks for
 non-FTS pages (50 ms → 0.5 ms).
 
+2026-11-28: prefix search with bounded ranking passes every class, giant-match
+included (`verdict30ms=true`); see the last section of
+`docs/validation/m2-benchmarks.md`.
+
 ## Archive export/import
 
 `copyloom-archive-bench` is separate from the search runner: that runner holds

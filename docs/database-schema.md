@@ -291,9 +291,9 @@ INSERT INTO clip_fts(clip_fts) VALUES('rebuild');
 INSERT INTO clip_fts(clip_fts) VALUES('integrity-check');
 ```
 
-Exact FTS commands are gated against the deployed SQLite version. Prefix lengths are provisional and retained only if benchmarks justify their storage/write cost.
+Exact FTS commands are gated against the deployed SQLite version. Prefix lengths are provisional and retained only if benchmarks justify their storage/write cost; since 2026-11-28 they serve the prefix terms that free search words of two or more characters (or one CJK character) produce (`docs/validation/m2-benchmarks.md`).
 
-A normal search joins `clip_fts.rowid = clips.id`, applies `MATCH`, metadata predicates and `deleted_at IS NULL`, orders by weighted BM25 plus deterministic recency/use tie-breakers, and limits before loading details.
+A ranked search joins `clip_fts.rowid = clips.id`, applies `MATCH`, metadata predicates and `deleted_at IS NULL`, orders by unweighted `bm25` with last-seen and ID tie-breakers, and limits before loading details. A search whose text matches more than 5,000 clips (a capped count) walks `clips_timeline` instead and keeps the clips whose ID is in the `MATCH` set, so it lists like the history.
 
 Do not index sensitive skipped content, Vault content, private marker payloads, raw attachment bytes, security-scoped bookmarks, or secret-detector match details.
 

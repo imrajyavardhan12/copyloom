@@ -28,13 +28,25 @@ public final class AppDatabase: Sendable {
 
   private let pool: DatabasePool
 
-  private init(pool: DatabasePool, attachments: AttachmentStore) {
+  /// How many matches a search ranks by relevance at most; past it, matches list
+  /// like the history (ARCHITECTURE.md § Search architecture). Ranking that
+  /// many is estimated at about 10 ms at 100k clips, from the 7.7k-match class
+  /// at 14.7 ms p95 (docs/validation/m2-benchmarks.md).
+  public static let defaultRelevanceRankingLimit = 5_000
+
+  private init(pool: DatabasePool, attachments: AttachmentStore, relevanceRankingLimit: Int) {
     self.pool = pool
     self.attachments = attachments
-    repository = GRDBClipRepository(pool: pool, attachments: attachments)
+    repository = GRDBClipRepository(
+      pool: pool, attachments: attachments, relevanceRankingLimit: relevanceRankingLimit)
   }
 
-  public static func open(at url: URL) throws -> AppDatabase {
+  /// - Parameter relevanceRankingLimit: the app keeps the default; tests lower
+  ///   it to reach the limit with a few clips. A negative limit counts as 0.
+  public static func open(
+    at url: URL,
+    relevanceRankingLimit: Int = defaultRelevanceRankingLimit
+  ) throws -> AppDatabase {
     var configuration = Configuration()
     configuration.foreignKeysEnabled = true
     configuration.busyMode = .timeout(5)
@@ -50,7 +62,8 @@ public final class AppDatabase: Sendable {
           .appending(path: "Attachments/v1", directoryHint: .isDirectory)
       )
       try attachments.prepare()
-      return AppDatabase(pool: pool, attachments: attachments)
+      return AppDatabase(
+        pool: pool, attachments: attachments, relevanceRankingLimit: relevanceRankingLimit)
     } catch {
       try? pool.close()
       throw error

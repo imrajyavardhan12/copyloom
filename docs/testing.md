@@ -25,6 +25,8 @@ The `ClipDomain` protocol is implemented by `ClipStore`. M1 behavior:
 
 Repository tests use a temporary on-disk database and public methods. Raw SQL is reserved for schema, migration and FTS integrity contracts.
 
+Search ordering past the relevance-ranking limit is tested by opening the database with a small `relevanceRankingLimit` (`AppDatabase.open(at:relevanceRankingLimit:)`); the app keeps `AppDatabase.defaultRelevanceRankingLimit`.
+
 ### `AppDatabase`
 
 Verify that fresh migration and reopening succeed, required SQLite/FTS5 capabilities are reported, and open/corruption errors are surfaced without replacing the file. Schema-version and FTS rebuild checks are valid storage-contract tests.

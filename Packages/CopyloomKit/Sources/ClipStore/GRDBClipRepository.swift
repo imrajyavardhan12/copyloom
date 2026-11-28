@@ -26,6 +26,7 @@ struct GRDBClipRepository: ClipRepository, Sendable {
 
   let pool: DatabasePool
   let attachments: AttachmentStore
+  let relevanceRankingLimit: Int
 
   func saveAcceptedText(_ clip: AcceptedTextClip) async throws -> ClipSummary {
     guard !clip.text.isEmpty else { throw ClipStoreError.emptyText }
@@ -1056,10 +1057,26 @@ struct GRDBClipRepository: ClipRepository, Sendable {
 
   private func fetch(query: SearchQuery, limit: Int) async throws -> [ClipSummary] {
     try validate(limit: limit)
-    let hasTextQuery = !query.text.isEmpty
-    let pattern = query.text.map(Self.ftsClause).joined(separator: " AND ")
+    // A word of punctuation only gives FTS5 no word to match, and would empty
+    // the results the moment it is typed after a real word (`kube -`). Text of
+    // nothing else still matches nothing.
+    let text = query.text.filter { !Self.words(in: $0).isEmpty }
+    guard !text.isEmpty || query.text.isEmpty else { return [] }
+    let hasTextQuery = !text.isEmpty
+    let pattern = text.map(Self.ftsClause).joined(separator: " AND ")
+    let rankingLimit = min(max(relevanceRankingLimit, 0), Int.max - 1)
 
     return try await pool.read { database in
+      // Ranked by bm25 only when at most `rankingLimit` clips match the text
+      // (filters aside); otherwise the page is the history filtered by the
+      // match set. Ranking sorts the whole match set: a word like `co` or
+      // `htt` matches most of a history, and ranking all of it measured up to
+      // 130 ms at 100k clips against under 10 ms for the filtered history
+      // page, while relevance among that many says little
+      // (docs/validation/m2-benchmarks.md). The capped count costs about 2 ms.
+      let ranksByRelevance =
+        try hasTextQuery
+        && Self.matchCount(of: pattern, upTo: rankingLimit + 1, in: database) <= rankingLimit
       // Note: the representation join intentionally ignores UTI. Every clip
       // currently keeps exactly one item-0 representation; image rows carry
       // their bytes in the attachment store with '' inline text.
@@ -1087,8 +1104,11 @@ struct GRDBClipRepository: ClipRepository, Sendable {
       }
       var appFilterIndex = 0
 
-      if hasTextQuery {
+      if ranksByRelevance {
         predicates.append("clip_fts MATCH ?")
+        arguments += [pattern]
+      } else if hasTextQuery {
+        predicates.append("c.id IN (SELECT rowid FROM clip_fts WHERE clip_fts MATCH ?)")
         arguments += [pattern]
       }
 
@@ -1178,14 +1198,15 @@ struct GRDBClipRepository: ClipRepository, Sendable {
       // same EXPLAIN summary, different bytecode. A top-N timeline page must
       // always walk this index, so the force is load-bearing, not a hint.
       // It fails loudly if the index is ever renamed; repository tests cover
-      // every path through here. FTS pages keep planner freedom: ranking all
-      // matches by bm25 is inherent to the query, not the plan.
+      // every path through here. Ranked FTS pages keep planner freedom:
+      // ranking all matches by bm25 is inherent to the query, not the plan.
+      // Unranked text pages are timeline pages filtered by the match set.
       let fromClause =
-        hasTextQuery
+        ranksByRelevance
         ? "clip_fts JOIN clips c ON c.id = clip_fts.rowid"
         : "clips c INDEXED BY clips_timeline"
       let orderClause =
-        hasTextQuery
+        ranksByRelevance
         ? "bm25(clip_fts), c.last_seen_at DESC, c.id DESC"
         : "c.is_pinned DESC, c.last_seen_at DESC, c.id DESC"
 
@@ -1293,13 +1314,77 @@ struct GRDBClipRepository: ClipRepository, Sendable {
     return rowID
   }
 
+  /// The typed text is always one quoted FTS5 string, so operators in it stay
+  /// text. A term's last word matches the words it begins, so results follow
+  /// typing (`kube` finds "kubernetes"; the `prefix` indexes in `Migrations`
+  /// serve this), unless the term ends in punctuation, which finishes it
+  /// (`c++` is the word "c", not every word starting with c), or that word is
+  /// a single letter or digit: no prefix index serves one, it begins most
+  /// words, and its scan measured 7–10 ms before any page. A CJK character is
+  /// exempt: `unicode61` keeps a CJK run as one word, which one character
+  /// rarely begins in most clips, and nothing else would find it. A term also
+  /// matches as a whole word, which bm25 then scores twice, so of two
+  /// otherwise comparable clips the one containing exactly that word ranks
+  /// higher. A quoted phrase matches whole words only.
   private static func ftsClause(_ clause: SearchTextClause) -> String {
-    let value: String
     switch clause {
-    case .term(let term): value = term
-    case .phrase(let phrase): value = phrase
+    case .term(let term):
+      let quoted = quotedFTSString(term)
+      guard let last = term.last, isWordCharacter(last),
+        let lastWord = words(in: clause).last, lastWord.count > 1 || isCJK(last)
+      else { return quoted }
+      return "(\(quoted) OR \(quoted)*)"
+    case .phrase(let phrase):
+      return quotedFTSString(phrase)
     }
-    return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+  }
+
+  /// The runs of word characters in a clause, roughly the words the
+  /// `unicode61` tokenizer makes of it.
+  private static func words(in clause: SearchTextClause) -> [Substring] {
+    let text: String
+    switch clause {
+    case .term(let term): text = term
+    case .phrase(let phrase): text = phrase
+    }
+    return text.split(whereSeparator: { !isWordCharacter($0) })
+  }
+
+  /// A character `unicode61` keeps in words: letters, digits and private-use
+  /// characters.
+  private static func isWordCharacter(_ character: Character) -> Bool {
+    character.isLetter || character.isNumber
+      || character.unicodeScalars.contains { $0.properties.generalCategory == .privateUse }
+  }
+
+  /// Han, kana or Hangul: scripts written without spaces, whose runs
+  /// `unicode61` keeps as single words.
+  private static func isCJK(_ character: Character) -> Bool {
+    character.unicodeScalars.contains { scalar in
+      switch scalar.value {
+      case 0x1100...0x11FF, 0x3040...0x30FF, 0x3130...0x318F, 0x31F0...0x31FF,
+        0x3400...0x4DBF, 0x4E00...0x9FFF, 0xAC00...0xD7AF, 0xF900...0xFAFF,
+        0xFF66...0xFF9F, 0x20000...0x2FA1F:
+        return true
+      default:
+        return false
+      }
+    }
+  }
+
+  /// How many clips match `pattern`, counting no further than `cap`.
+  private static func matchCount(of pattern: String, upTo cap: Int, in database: Database)
+    throws -> Int
+  {
+    try Int.fetchOne(
+      database,
+      sql: "SELECT count(*) FROM (SELECT 1 FROM clip_fts WHERE clip_fts MATCH ? LIMIT ?)",
+      arguments: [pattern, cap]
+    ) ?? 0
+  }
+
+  private static func quotedFTSString(_ value: String) -> String {
+    "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
   }
 
   private static func fetchSummary(clipRowID: Int64, database: Database) throws -> ClipSummary {

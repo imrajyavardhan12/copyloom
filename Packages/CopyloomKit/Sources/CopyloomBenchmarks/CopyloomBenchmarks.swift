@@ -250,6 +250,44 @@ private enum CopyloomBenchmarks {
     try await measure(
       name: "unicode-term",
       query: SearchQuery(text: [.term("café")], filters: []))
+    // Words still being typed: a term matches the words it begins.
+    try await measure(
+      name: "prefix-one-char",
+      query: SearchQuery(text: [.term("c")], filters: []))
+    try await measure(
+      name: "prefix-two-char",
+      query: SearchQuery(text: [.term("co")], filters: []))
+    try await measure(
+      name: "prefix-common",
+      query: SearchQuery(text: [.term("postg")], filters: []))
+    try await measure(
+      name: "prefix-mid",
+      query: SearchQuery(text: [.term("ite")], filters: []))
+    try await measure(
+      name: "prefix-rare",
+      query: SearchQuery(text: [.term("rare-mark")], filters: []))
+    // A short word with few matches, alone and filtered: under the ranking
+    // limit, so ranked through the FTS join.
+    try await measure(
+      name: "prefix-short-rare",
+      query: SearchQuery(text: [.term("ra")], filters: []))
+    try await measure(
+      name: "prefix-short-rare-app",
+      query: SearchQuery(text: [.term("ra")], filters: [.application("Safari")]))
+    // Three letters of a common word: past the ranking limit.
+    try await measure(
+      name: "prefix-three-common",
+      query: SearchQuery(text: [.term("pos")], filters: []))
+    // The first letter of a second word, typed after a common and a rare one.
+    try await measure(
+      name: "prefix-second-word-one-char",
+      query: SearchQuery(text: [.term("postgres"), .term("c")], filters: []))
+    try await measure(
+      name: "prefix-rare-second-word-one-char",
+      query: SearchQuery(text: [.term("rare"), .term("c")], filters: []))
+    try await measure(
+      name: "prefix-second-word",
+      query: SearchQuery(text: [.term("postgres"), .term("con")], filters: []))
     try await measure(
       name: "filter-app",
       query: SearchQuery(text: [], filters: [.application("Safari")]))

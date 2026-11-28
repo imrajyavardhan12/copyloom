@@ -63,7 +63,13 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 
 - Original Paper weave app icon with complete macOS 1×/2× sizes and a matching vector menu-bar mark that adapts to light/dark appearances. The menu item's accessibility name remains Copyloom; clipboard and paste behavior are unchanged.
 
+### Changed
+
+- Search matches words as you type them: from its second letter, each word finds the words it begins (`kube` finds "kubernetes"), where before it had to be typed whole. A single letter, and a word ending in punctuation (`c++`), match only that whole word. Quoted phrases still match whole words only, and clips containing exactly the typed word get a ranking boost. A search is ranked by relevance when at most 5,000 clips match its text; a broader one lists its matches newest first, pinned first, as the history does. Every benchmark class now passes the `<30 ms` target at 100k clips; a common word like `postgres` took 77 ms p95 before (`docs/validation/m2-benchmarks.md`). Smart Collections run the same search, so a saved query can now match more clips and order them differently.
+
 ### Fixed
+
+- A word of punctuation only typed beside real words (`kube -`) no longer empties the search results; it is ignored.
 
 - Text containing a NUL character is stored and pasted back whole. GRDB 7.11.1 cut bound text at the first NUL, so such a clip kept only what came before it; GRDB is now 7.12.0 in the package and the app workspace. Clips captured before this keep their cut text.
 
