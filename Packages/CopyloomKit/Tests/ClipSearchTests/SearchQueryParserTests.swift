@@ -1,3 +1,4 @@
+import ClipDomain
 import Foundation
 import Testing
 
@@ -43,6 +44,40 @@ struct SearchQueryParserTests {
 
     #expect(query.text == [.term("https://example.com/docs")])
     #expect(query.filters.isEmpty)
+  }
+
+  @Test(
+    "a colon after a word that is not a filter name is text: a URL being typed, a time, code"
+  )
+  func keepsUnregisteredNamesAsText() throws {
+    let context = SearchParseContext(now: .distantPast, calendar: .current)
+
+    for input in ["https:", "https:/", "HTTPS:", "10:30", "std::vector", "note:", "mailto:x"] {
+      let query = try SearchQueryParser().parse(input, context: context)
+      #expect(query.text == [.term(input)])
+      #expect(query.filters.isEmpty)
+    }
+    #expect(
+      try SearchQueryParser().parse("https: app:Safari", context: context)
+        == SearchQuery(text: [.term("https:")], filters: [.application("Safari")]))
+  }
+
+  @Test("a filter name still needs a value it understands")
+  func reportsBadValuesOfRegisteredFilters() throws {
+    let context = SearchParseContext(now: .distantPast, calendar: .current)
+
+    #expect(throws: SearchQueryError.missingFilterValue("app")) {
+      try SearchQueryParser().parse("app:", context: context)
+    }
+    #expect(throws: SearchQueryError.unsupportedContentType("movie")) {
+      try SearchQueryParser().parse("type:movie", context: context)
+    }
+    #expect(throws: SearchQueryError.unsupportedFilter(name: "is", value: "archived")) {
+      try SearchQueryParser().parse("IS:archived", context: context)
+    }
+    #expect(throws: SearchQueryError.unsupportedFilter(name: "has", value: "audio")) {
+      try SearchQueryParser().parse("has:audio", context: context)
+    }
   }
 
   @Test("reports malformed quotes and dates with typed errors")

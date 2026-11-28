@@ -70,6 +70,7 @@ All notable changes to Copyloom will be documented here. The format follows [Kee
 ### Fixed
 
 - A word of punctuation only typed beside real words (`kube -`) no longer empties the search results; it is ignored.
+- Typing a URL no longer shows "Invalid search query" until its second `/`: only a filter name (`app`, `type`, `is`, `after`, `before`, `tag`, `has`) before a colon makes a filter, so `https:`, `10:30` and `std::vector` are searched as text. A filter name with a value it doesn't understand still reports the error.
 
 - Text containing a NUL character is stored and pasted back whole. GRDB 7.11.1 cut bound text at the first NUL, so such a clip kept only what came before it; GRDB is now 7.12.0 in the package and the app workspace. Clips captured before this keep their cut text.
 

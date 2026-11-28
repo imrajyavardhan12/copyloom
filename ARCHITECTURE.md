@@ -198,7 +198,7 @@ No OCR/thumbnail/parser work runs in the polling callback or UI actor.
 - `tag:project`
 - `has:ocr`
 
-Output is a typed AST. Unknown filters produce a visible diagnostic and are treated consistently; malformed dates/quotes do not silently broaden the query. The parser is extensible through filter descriptors, not UI conditionals.
+Output is a typed AST. Only a registered filter name before a colon makes a filter; any other word with a colon is a free term, so a URL being typed (`https:`), a time (`10:30`) or code (`std::vector`) is searched as text. A registered filter with a missing or unknown value produces a visible diagnostic; malformed dates/quotes do not silently broaden the query. The parser is extensible through filter descriptors, not UI conditionals.
 
 ### Execution
 

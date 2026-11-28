@@ -20,6 +20,9 @@ public enum SearchQueryError: Error, Equatable, Sendable {
 }
 
 public struct SearchQueryParser: Sendable {
+  /// The names `parse` reads as filters; each is handled in its `switch`.
+  static let filterNames: Set<String> = ["app", "type", "is", "after", "before", "tag", "has"]
+
   public init() {}
 
   public func parse(_ input: String, context: SearchParseContext) throws -> SearchQuery {
@@ -41,7 +44,9 @@ public struct SearchQueryParser: Sendable {
       let name = String(token.value[..<separator]).lowercased()
       let value = String(token.value[token.value.index(after: separator)...])
 
-      if value.hasPrefix("//") {
+      // Only a filter name makes a filter. Any other word with a colon is text:
+      // a URL as it is typed (`https:`), a time, code (`std::vector`).
+      if !Self.filterNames.contains(name) || value.hasPrefix("//") {
         text.append(.term(token.value))
         continue
       }
